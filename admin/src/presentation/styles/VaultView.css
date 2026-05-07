@@ -1,0 +1,290 @@
+/* VaultView.css */
+
+.vault-view {
+    padding: 20px;
+    overflow-y: auto;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.vault-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.vault-title {
+    margin: 0 0 2px;
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.vault-subtitle {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+}
+
+.vault-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 40px;
+    color: var(--text-secondary);
+    font-size: 0.875rem;
+    justify-content: center;
+}
+
+.vault-body {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* ── Section ────────────────────────────────────────────── */
+
+.vault-section {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+}
+
+.section-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 14px;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text-tertiary);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg-primary);
+}
+
+/* ── Score bar ──────────────────────────────────────────── */
+
+.score-bar-wrap {
+    padding: 12px 14px 14px;
+}
+
+.score-bar {
+    display: flex;
+    height: 10px;
+    border-radius: 6px;
+    overflow: hidden;
+    background: var(--border);
+    margin-bottom: 8px;
+    gap: 1px;
+}
+
+.score-bar-seg {
+    height: 100%;
+    transition: width 0.4s ease;
+    min-width: 2px;
+}
+
+.score-bar-labels {
+    display: flex;
+    gap: 10px;
+    font-size: 0.68rem;
+    color: var(--text-tertiary);
+    flex-wrap: wrap;
+}
+
+/* ── Issue panels ───────────────────────────────────────── */
+
+.issue-panels {
+    display: flex;
+    flex-direction: column;
+}
+
+.issue-panel {
+    border-bottom: 1px solid var(--border);
+}
+
+.issue-panel:last-child {
+    border-bottom: none;
+}
+
+.issue-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: background 0.15s;
+    user-select: none;
+}
+
+.issue-panel-header:hover {
+    background: rgba(0,0,0,0.02);
+}
+
+.issue-panel-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.issue-panel-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--text-tertiary);
+}
+
+.issue-icon { display: flex; align-items: center; }
+
+.issue-title {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.issue-count {
+    font-size: 0.7rem;
+    font-weight: 700;
+    padding: 1px 7px;
+    border-radius: 10px;
+    background: var(--border);
+    color: var(--text-tertiary);
+}
+
+/* ── Issue list (expanded) ──────────────────────────────── */
+
+.issue-list {
+    padding: 4px 14px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    max-height: 280px;
+    overflow-y: auto;
+    border-top: 1px solid var(--border);
+    background: var(--bg-primary);
+}
+
+.issue-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 0;
+    border-bottom: 1px solid rgba(0,0,0,0.03);
+    flex-wrap: wrap;
+}
+
+.issue-item-path {
+    font-size: 0.72rem;
+    color: var(--text-secondary);
+    font-family: monospace;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.issue-item-badge {
+    font-size: 0.65rem;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: var(--border);
+    color: var(--text-tertiary);
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.issue-item-badge.warn { background: #fef3c7; color: #92400e; }
+.issue-item-badge.error { background: #fef2f2; color: #dc2626; }
+
+.issue-more {
+    font-size: 0.72rem;
+    color: var(--text-tertiary);
+    padding: 4px 0;
+    text-align: center;
+}
+
+/* ── Action button ──────────────────────────────────────── */
+
+.action-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.action-btn:hover:not(:disabled) {
+    background: var(--primary);
+    color: #fff;
+    border-color: var(--primary);
+}
+
+.action-btn.danger:hover:not(:disabled) {
+    background: #ef4444;
+    border-color: #ef4444;
+    color: #fff;
+}
+
+.action-btn.done {
+    background: #f0fdf4;
+    border-color: #10b981;
+    color: #065f46;
+}
+
+.action-btn.error {
+    background: #fef2f2;
+    border-color: #ef4444;
+    color: #dc2626;
+}
+
+.action-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* ── Maintenance row ────────────────────────────────────── */
+
+.maintenance-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 14px;
+    gap: 12px;
+}
+
+.maintenance-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.maintenance-item span:first-child {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.maint-desc {
+    font-size: 0.72rem !important;
+    color: var(--text-tertiary) !important;
+    font-weight: 400 !important;
+}
+
+/* ── Spin animation ─────────────────────────────────────── */
+
+.spin { animation: spin 1s linear infinite; }
+
+@keyframes spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}

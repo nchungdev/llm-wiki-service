@@ -1,0 +1,51 @@
+/* Data Manager View */
+.storage-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 16px;
+    margin-bottom: 24px;
+}
+
+.storage-stat {
+    background: var(--card-bg);
+    padding: 20px;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+}
+
+.storage-stat-label { font-size: 0.8125rem; color: var(--text-secondary); margin-bottom: 8px; }
+.storage-stat-value { font-size: 1.5rem; font-weight: 700; color: var(--text); }
+
+.selection-bar {
+    display: none;
+    align-items: center;
+    gap: 16px;
+    padding: 12px 20px;
+    background: var(--primary-bg);
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+    border: 1px solid var(--primary-light);
+}
+
+.selection-bar.active { display: flex; }
+.selection-info { font-size: 0.875rem; font-weight: 500; color: var(--primary); flex: 1; }
+
+.raw-item-title { font-weight: 600; color: var(--text); display: block; margin-bottom: 2px; }
+.raw-item-meta { font-size: 0.75rem; color: var(--text-secondary); display: flex; gap: 12px; }
+
+/* Upload Zone */
+.upload-zone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius-lg);
+    padding: 48px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: var(--transition);
+    color: var(--text-secondary);
+}
+
+.upload-zone:hover, .upload-zone.dragover {
+    border-color: var(--primary);
+    background: var(--primary-bg);
+    color: var(--primary);
+}

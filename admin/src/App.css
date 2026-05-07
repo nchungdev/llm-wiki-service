@@ -1,0 +1,7 @@
+@import './presentation/styles/Global.css';
+@import './presentation/styles/Sidebar.css';
+@import './presentation/styles/Dashboard.css';
+@import './presentation/styles/ManageSources.css';
+@import './presentation/styles/SyncView.css';
+@import './presentation/styles/DataManager.css';
+@import './presentation/styles/Modals.css';

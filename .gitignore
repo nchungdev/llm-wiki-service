@@ -7,14 +7,25 @@ venv/
 .env
 
 # Node
-node_modules/
-dist/
-dist-ssr
+client/dist-build
+client/dist
+client/dist-electron
+server/dist
+server/build
+server/*.spec
+node_modules
+.env
+__pycache__
+data/screenshots/*
+data/wiki/*
+data/raw/*
 *.local
+dev/
 
 # IDE
 .vscode/
 .idea/
+data/*
 
 # OS
 .DS_Store
