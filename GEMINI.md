@@ -173,46 +173,30 @@ gemini-2.0-flash-001                        ❌ 404 NOT_FOUND (cả short và fu
 
 ## Research View (Chat + Deep Research)
 
-Module nghiên cứu kết hợp RAG local và web search.
+Module nghiên cứu kết hợp RAG local và web search với giao diện Omnibox cao cấp.
 
-### Hai chế độ hoạt động
-| Chế độ | Mô tả | Backend endpoint |
+### Bốn chế độ hoạt động (Research Modes)
+| Chế độ | Mô tả | Tính năng chính |
 |---|---|---|
-| **Local RAG** (mặc định) | Trả lời dựa trên ChromaDB wiki local, có trích dẫn nguồn `[1]`, `[2]`... | `POST /chat` |
-| **Deep Research** | Agentic workflow: Plan → Web Search (Tavily) → Scrape → Synthesize | `POST /research/deep` |
+| **Tìm nhanh** | Hybrid search (Wiki + Web) | Trả lời nhanh, có trích dẫn nguồn [1], [2]... |
+| **Deep Research** | Nghiên cứu sâu đa bước | Planning -> Search -> Scrape -> Synthesize |
+| **Extract URL** | Trích xuất tri thức trực tiếp | URL -> Markdown -> Wiki Library |
+| **Smart Crawl** | Thu thập domain tự động | Thêm domain vào pipeline crawl định kỳ |
 
-### Deep Research Workflow
-```
-User prompt
-    ↓ _plan_queries() → LLM tạo 3-5 search queries
-    ↓ WebSearchProvider.search_multiple() → Tavily API
-    ↓ UrlScraper.scrape_multiple() → HTML → Markdown (BeautifulSoup + markdownify)
-    ↓ LLM synthesize với trích dẫn nguồn [1],[2]...
-Response + Sources panel
-```
+### Quy trình Deep Research 2 bước (Agentic Workflow)
+Hệ thống sử dụng mô hình "Human-in-the-loop" để tối ưu chi phí và độ chính xác:
+1. **Giai đoạn Lập kế hoạch (Planning)**: AI phân tích prompt và đề xuất danh sách các câu lệnh tìm kiếm và mục tiêu nghiên cứu.
+2. **Giai đoạn Thực thi (Execution)**: Người dùng duyệt kế hoạch, AI tiến hành "lùng sục" Internet và tổng hợp báo cáo chuyên sâu.
+
+### Giao diện Omnibox & Dynamic UI
+- **Smart Input**: Ô nhập liệu phong cách Gemini với bộ chọn AI Provider (Ollama, Gemini, Vertex AI) và Model ngay tại chỗ.
+- **Source Filtering**: Cho phép giới hạn không gian tìm kiếm: `Tất cả`, `Chỉ Wiki`, hoặc `Chỉ Web`.
+- **Dynamic Layout**: 
+  - Bình thường: Chat bên trái, Lịch sử nghiên cứu bên phải.
+  - Khi nghiên cứu: Tự động ẩn Lịch sử, hiển thị **Progress Panel** với skeleton loading và tiến trình tư duy chi tiết.
+- **Tabbed Sidebar**: Chuyển đổi linh hoạt giữa Lịch sử nghiên cứu và Danh sách nguồn trích dẫn.
 
 ### Infrastructure mới
-- `WebSearchProvider` (`app/infrastructure/search_provider.py`) — Tavily API client, hỗ trợ batch search với dedup URL.
-- `UrlScraper` (`app/infrastructure/parsers/web_scraper.py`) — Async scraper, cleanup nav/footer/ads, convert sang Markdown. Concurrency control qua Semaphore.
-- `DeepResearchUseCase` (`app/domain/use_cases/deep_research_use_cases.py`) — Orchestrate toàn bộ agentic flow. Lưu lịch sử vào `SYSTEM_DIR/research_history.json`.
-
-### Chat Response Format (cả hai chế độ)
-```json
-{
-  "response": "Markdown text với [1][2] citations",
-  "sources": [
-    {"id": 1, "title": "...", "url": "...", "content": "snippet..."},
-    {"id": 2, "filename": "note.md", "title": "...", "content": "..."}
-  ]
-}
-```
-
-### View lazy-mounting (App.tsx)
-Views được mount lần đầu khi user navigate tới, sau đó ẩn bằng `display: none` thay vì unmount — giữ state chat giữa các lần switch view.
-
-### API Endpoints mới
-- `POST /research/deep` — Deep research agentic workflow
-- `GET /research/history` — Lịch sử 50 session gần nhất từ `research_history.json`
-- `GET /ai/availability` — Trạng thái sẵn sàng của từng AI provider
-- `GET /ai/models?provider=...` — Lấy model list theo provider cụ thể
-- `POST /pipeline/reindex` — Trigger reindex wiki vào ChromaDB (chạy background)
+- `WebSearchProvider`: Tavily API client hỗ trợ tìm kiếm đa luồng.
+- `DeepResearchUseCase`: Orchestrate quy trình lập kế hoạch và thực thi nghiên cứu.
+- `AdminApi`: Mở rộng hỗ trợ cấu hình AI động cho từng yêu cầu.

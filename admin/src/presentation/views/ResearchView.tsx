@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, BookOpen, Quote, Info, Globe, Shield, RefreshCw, Cpu, Save, Check, History } from 'lucide-react';
+import { Send, Globe, RefreshCw, Save, Check, Zap, Search, Link as LinkIcon, Database, Clock, Cpu, Layout, FileText, ChevronDown, X, PlayCircle } from 'lucide-react';
 import { AdminApi } from '../../infrastructure/api/AdminApi';
 import type { ChatResponse } from '../../domain/entities';
 import '../styles/ResearchView.css';
@@ -8,19 +8,45 @@ interface Message {
   role: 'user' | 'ai';
   text: string;
   sources?: ChatResponse['sources'];
+  type?: 'search' | 'deep' | 'extract' | 'crawl';
 }
+
+type ResearchMode = 'search' | 'deep' | 'extract' | 'crawl';
 
 export const ResearchView: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [isDeepMode, setIsDeepMode] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  const [isExecutingDeep, setIsExecutingDeep] = useState(false);
+  const [mode, setMode] = useState<ResearchMode>('search');
   const [historyItems, setHistoryItems] = useState<any[]>([]);
   const [statusMsg, setStatusMsg] = useState('');
+  const [researchPlan, setResearchPlan] = useState<any>(null);
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
+  const [rightPanelTab, setRightPanelTab] = useState<'history' | 'sources'>('history');
+  
+  // AI Selection State
+  const [provider, setProvider] = useState('gemini');
+  const [model, setModel] = useState('');
+  const [models, setModels] = useState<{id: string, label: string}[]>([]);
+  const [searchIn, setSearchIn] = useState<'all' | 'wiki' | 'web'>('all');
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetchModels();
+  }, [provider]);
+
+  const fetchModels = async () => {
+    try {
+      const res = await AdminApi.getAvailableModels(provider);
+      setModels(res.data.models);
+      if (res.data.models.length > 0) setModel(res.data.models[0].id);
+    } catch (e) {
+      console.error('Failed to fetch models', e);
+    }
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -33,47 +59,70 @@ export const ResearchView: React.FC = () => {
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
-    const userMsg: Message = { role: 'user', text: input };
-    setMessages(prev => [...prev, userMsg]);
+    const currentInput = input.trim();
+    const currentMode = mode;
+
+    setMessages(prev => [...prev, { role: 'user', text: currentInput, type: currentMode }]);
     setInput('');
     setLoading(true);
-    setStatusMsg(isDeepMode ? '🔄 Đang khởi động Agent nghiên cứu...' : '🤔 Đang suy nghĩ...');
 
     try {
-      let res;
-      if (isDeepMode) {
-        const statusSequence = [
-          '🔍 Đang phân tích yêu cầu...',
-          '🌐 Đang tìm kiếm thông tin trên Web...',
-          '📄 Đang đọc và trích xuất nội dung...',
-          '✍️ Đang tổng hợp báo cáo chuyên sâu...'
-        ];
-        
-        let sIdx = 0;
-        const interval = setInterval(() => {
-          if (sIdx < statusSequence.length) {
-            setStatusMsg(statusSequence[sIdx]);
-            sIdx++;
-          }
-        }, 5000);
+      let resText = '';
+      let sources: any[] = [];
 
-        res = await AdminApi.deepResearch(input);
-        clearInterval(interval);
+      if (currentMode === 'deep') {
+        setStatusMsg('🔍 Đang lập kế hoạch nghiên cứu...');
+        const res = await AdminApi.getDeepResearchPlan(currentInput);
+        setResearchPlan(res.data);
+        setLoading(false);
+        return;
+      } else if (currentMode === 'extract') {
+        setStatusMsg('📄 Đang trích xuất tri thức...');
+        const res = await AdminApi.extractKnowledge(currentInput);
+        resText = res.data.status === 'success' ? `✅ Trích xuất thành công! Lưu tại: \`${res.data.path}\`` : `❌ Thất bại: ${res.data.error}`;
+      } else if (currentMode === 'crawl') {
+        setStatusMsg('🕸️ Đang thiết lập Crawl...');
+        const res = await AdminApi.triggerQuickCrawl(currentInput);
+        resText = `✅ Đã thêm nguồn: **${res.data.source?.name}**.`;
       } else {
-        res = await AdminApi.chatWithAI(input);
+        setStatusMsg('🤔 Đang tra cứu...');
+        const res = await AdminApi.chatWithAI(currentInput, { provider, model, search_in: searchIn });
+        resText = res.data.response;
+        sources = res.data.sources;
       }
 
-      const aiMsg: Message = {
-        role: 'ai',
-        text: res.data.response,
-        sources: res.data.sources
-      };
-      setMessages(prev => [...prev, aiMsg]);
-      fetchHistory(); // Refresh history
+      setMessages(prev => [...prev, { role: 'ai', text: resText, sources: sources, type: currentMode }]);
+      if (sources.length > 0) setRightPanelTab('sources');
+      if (currentMode === 'search') fetchHistory();
     } catch (e) {
-      console.error('Chat error', e);
-      setMessages(prev => [...prev, { role: 'ai', text: 'Xin lỗi, có lỗi xảy ra khi xử lý yêu cầu.' }]);
+      setMessages(prev => [...prev, { role: 'ai', text: 'Xin lỗi, có lỗi xảy ra.' }]);
     } finally {
+      setLoading(false);
+      setStatusMsg('');
+    }
+  };
+
+  const executeDeepResearch = async () => {
+    const planToRun = researchPlan;
+    setResearchPlan(null);
+    setIsExecutingDeep(true);
+    setLoading(true);
+    setStatusMsg('🚀 Đang thực thi kế hoạch nghiên cứu chuyên sâu...');
+    
+    try {
+      const res = await AdminApi.deepResearch(planToRun.query, planToRun, { provider, model, search_in: searchIn });
+      setMessages(prev => [...prev, { 
+        role: 'ai', 
+        text: res.data.response, 
+        sources: res.data.sources, 
+        type: 'deep' 
+      }]);
+      if (res.data.sources.length > 0) setRightPanelTab('sources');
+      fetchHistory();
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'ai', text: 'Lỗi thực thi nghiên cứu.' }]);
+    } finally {
+      setIsExecutingDeep(false);
       setLoading(false);
       setStatusMsg('');
     }
@@ -97,28 +146,19 @@ export const ResearchView: React.FC = () => {
       { role: 'user', text: item.query },
       { role: 'ai', text: item.response, sources: item.sources }
     ]);
-    setIsDeepMode(item.mode === 'deep');
-    setShowHistory(false);
+    setMode(item.mode === 'deep' ? 'deep' : 'search');
+    if (item.sources?.length > 0) setRightPanelTab('sources');
   };
 
   const handleSaveToWiki = async (index: number, text: string) => {
-    const query = messages[index - 1]?.text || 'Báo cáo Nghiên cứu';
-    const title = prompt('Nhập tiêu đề cho bài nghiên cứu này:', `Nghiên cứu: ${query}`);
+    const title = prompt('Nhập tiêu đề:', `Nghiên cứu: ${messages[index - 1]?.text}`);
     if (!title) return;
-
-    const frontmatter = `---\ntitle: "${title}"\ncategory: "Nghiên cứu"\ncreated: "${new Date().toISOString()}"\n---\n\n`;
-    const finalContent = text.startsWith('---') ? text : frontmatter + text;
-
     try {
-      await AdminApi.saveWikiPage({ title, content: finalContent });
-      setSavedIds(prev => {
-        const next = new Set(prev);
-        next.add(index);
-        return next;
-      });
-      alert('Đã lưu vào thư viện Wiki (Obsidian) trong nhóm Nghiên cứu!');
+      await AdminApi.saveWikiPage({ title, content: text });
+      setSavedIds(prev => new Set(prev).add(index));
+      alert('Đã lưu!');
     } catch (e) {
-      alert('Lỗi khi lưu tài liệu.');
+      alert('Lỗi khi lưu.');
     }
   };
 
@@ -130,191 +170,215 @@ export const ResearchView: React.FC = () => {
       const match = part.match(/\[(\d+)\]/);
       if (match) {
         const id = parseInt(match[1]);
-        return (
-          <button 
-            key={i} 
-            className="citation-badge"
-            onClick={() => setSelectedSourceId(id)}
-          >
-            {id}
-          </button>
-        );
+        return <button key={i} className="citation-badge" onClick={() => { setSelectedSourceId(id); setRightPanelTab('sources'); }}>{id}</button>;
       }
       return <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{part}</span>;
     });
   };
 
+  const modeConfig = {
+    search: { label: 'Tìm nhanh', icon: <Search size={14} />, placeholder: 'Hỏi bất cứ điều gì...' },
+    deep: { label: 'Deep Research', icon: <Zap size={14} />, placeholder: 'Nghiên cứu sâu trên Internet...' },
+    extract: { label: 'Extract URL', icon: <LinkIcon size={14} />, placeholder: 'Dán URL bài viết...' },
+    crawl: { label: 'Smart Crawl', icon: <Database size={14} />, placeholder: 'Dán URL domain...' }
+  };
+
   return (
     <div className="view-panel active">
-      <div className="research-layout">
+      <div className={`research-layout ${isExecutingDeep ? 'full-width' : ''}`}>
         
         <div className="chat-section">
-          <div className="chat-header-actions" style={{ padding: '8px 16px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'flex-end', background: '#f8fafc' }}>
-             <button 
-               className={`btn-xs ${showHistory ? 'btn-primary' : 'btn-secondary'}`}
-               onClick={() => {
-                 if (!showHistory) fetchHistory();
-                 setShowHistory(!showHistory);
-               }}
-             >
-               <History size={14} /> Lịch sử
-             </button>
-          </div>
-
-          <div className="messages-container" style={{ position: 'relative' }}>
-            {showHistory && (
-              <div className="history-overlay" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(255,255,255,0.95)', zIndex: 10, padding: 20, overflowY: 'auto' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                  <h4 style={{ margin: 0 }}>Lịch sử nghiên cứu</h4>
-                  <button className="btn-icon-xs" onClick={() => setShowHistory(false)}>✕</button>
-                </div>
-                {historyItems.length === 0 ? (
-                  <div style={{ textAlign: 'center', color: '#94a3b8', marginTop: 40 }}>Chưa có lịch sử.</div>
-                ) : (
-                  historyItems.map(item => (
-                    <div 
-                      key={item.id} 
-                      className="history-item-card" 
-                      onClick={() => handleLoadHistory(item)}
-                      style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 8, marginBottom: 8, cursor: 'pointer', background: 'white' }}
-                    >
-                      <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginBottom: 4 }}>
-                        {new Date(item.timestamp).toLocaleString()} • {item.mode === 'deep' ? 'Deep Web' : 'Local'}
-                      </div>
-                      <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                        {item.query}
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
-            {messages.length === 0 && (
+          <div className="messages-container">
+            {messages.length === 0 && !researchPlan && !isExecutingDeep && (
               <div className="empty-chat">
-                <div className="agent-avatar-large" style={{ background: 'var(--primary)', padding: 12, borderRadius: 20, marginBottom: 16, display: 'inline-flex' }}>
-                  <Cpu size={32} color="white" />
+                <h3>Khám phá kiến thức mới</h3>
+                <p>Tôi có thể giúp bạn tìm kiếm trong Wiki, nghiên cứu Internet hoặc trích xuất dữ liệu.</p>
+              </div>
+            )}
+
+            {researchPlan && (
+              <div className="message-bubble message-ai" style={{ width: '100%', maxWidth: '750px', border: '1px solid var(--primary)', background: '#f8fafc', alignSelf: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        <div style={{ background: 'var(--primary)', padding: 6, borderRadius: 6 }}><Zap size={16} color="white" /></div>
+                        <h4 style={{ margin: 0 }}>Kế hoạch Nghiên cứu Deep Research</h4>
+                    </div>
+                    <button className="btn-icon-xs" onClick={() => setResearchPlan(null)}><X size={14} /></button>
                 </div>
-                <h3>Hệ thống Nghiên cứu AI</h3>
-                <p>Hãy đặt câu hỏi để bắt đầu khám phá tri thức.</p>
-                
-                <div className="research-modes-hint" style={{ display: 'flex', gap: 12, marginTop: 20 }}>
-                  <div className={`mode-card ${!isDeepMode ? 'active' : ''}`} onClick={() => setIsDeepMode(false)}
-                    style={{ padding: '12px 20px', border: '1px solid var(--border)', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, background: !isDeepMode ? 'var(--primary-bg)' : 'white' }}>
-                    <Shield size={16} />
-                    <span>Wiki Vault (Local)</span>
-                  </div>
-                  <div className={`mode-card ${isDeepMode ? 'active' : ''}`} onClick={() => setIsDeepMode(true)}
-                    style={{ padding: '12px 20px', border: '1px solid var(--border)', borderRadius: 12, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8, background: isDeepMode ? 'var(--primary-bg)' : 'white' }}>
-                    <Globe size={16} />
-                    <span>Deep Web (Agentic)</span>
-                  </div>
+                <div style={{ background: 'white', borderRadius: 12, padding: 20, border: '1px solid var(--border)', marginBottom: 20 }}>
+                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        {researchPlan.steps.map((step: any) => (
+                            <li key={step.id} style={{ display: 'flex', gap: 10, fontSize: '0.85rem' }}>
+                                {step.type === 'search' ? <Search size={14} style={{ marginTop: 2, color: 'var(--primary)' }} /> : <Zap size={14} style={{ marginTop: 2, color: 'var(--accent)' }} />}
+                                <span>{step.text}</span>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
+                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
+                    <button className="btn-secondary btn-sm" onClick={() => setResearchPlan(null)}>Hủy bỏ</button>
+                    <button className="btn-primary btn-sm" onClick={executeDeepResearch}>Bắt đầu nghiên cứu</button>
                 </div>
               </div>
             )}
-            {messages.map((msg, i) => (
+
+            {isExecutingDeep && (
+              <div style={{ maxWidth: '800px', margin: '0 auto', width: '100%' }}>
+                <div className="message-bubble message-ai" style={{ width: '100%', background: 'transparent', border: 'none', padding: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+                        <RefreshCw size={20} className="thought-spinner" color="var(--primary)" />
+                        <span style={{ fontSize: '1.1rem', fontWeight: 600 }}>Tôi đang tiến hành.</span>
+                    </div>
+                    <p style={{ color: 'var(--text-secondary)', marginBottom: 24 }}>
+                        Khi nghiên cứu hoàn tất, tôi sẽ thông báo. Trong lúc chờ, bạn có thể rời khỏi cuộc trò chuyện.
+                    </p>
+
+                    <div className="deep-progress-panel">
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                                <PlayCircle size={18} color="var(--primary)" />
+                                <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>Tiến trình nghiên cứu chuyên sâu</span>
+                            </div>
+                            <button className="selector-btn" style={{ background: 'rgba(255,255,255,0.05)', color: '#fff' }}>
+                                Hiện tiến trình tư duy <ChevronDown size={14} />
+                            </button>
+                        </div>
+                        
+                        <div className="skeleton-container">
+                            <div className="skeleton-line" style={{ width: '90%' }}></div>
+                            <div className="skeleton-line" style={{ width: '70%' }}></div>
+                            <div className="skeleton-line" style={{ width: '85%' }}></div>
+                            <div className="skeleton-line" style={{ width: '40%' }}></div>
+                        </div>
+                    </div>
+                </div>
+              </div>
+            )}
+
+            {!isExecutingDeep && messages.map((msg, i) => (
               <div key={i} className={`message-bubble message-${msg.role}`}>
                 {renderMessageText(msg.text)}
-                
                 {msg.role === 'ai' && !loading && (
                   <div className="message-actions" style={{ marginTop: 12, borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
-                    <button 
-                      className={`btn-xs ${savedIds.has(i) ? 'btn-success' : 'btn-secondary'}`}
-                      onClick={() => handleSaveToWiki(i, msg.text)}
-                      style={{ fontSize: '0.65rem', height: 24 }}
-                    >
+                    <button className={`btn-xs ${savedIds.has(i) ? 'btn-success' : 'btn-secondary'}`} onClick={() => handleSaveToWiki(i, msg.text)}>
                       {savedIds.has(i) ? <><Check size={12} /> Đã lưu</> : <><Save size={12} /> Lưu vào Wiki</>}
                     </button>
                   </div>
                 )}
               </div>
             ))}
-            {loading && (
-              <div className="message-bubble message-ai" style={{ opacity: 0.8, background: '#f0f9ff', border: '1px dashed #bae6fd' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <RefreshCw size={14} className="animate-spin" />
-                  <span>{statusMsg}</span>
-                </div>
+            
+            {loading && !isExecutingDeep && (
+              <div className="thought-process">
+                <RefreshCw size={16} className="thought-spinner" />
+                <span>{statusMsg}</span>
               </div>
             )}
             <div ref={messagesEndRef} />
           </div>
 
-          <div className="chat-input-container">
-            <div className="chat-input-wrapper">
-              <div 
-                className={`mode-toggle-pill ${isDeepMode ? 'deep' : ''}`} 
-                onClick={() => setIsDeepMode(!isDeepMode)}
-                style={{ 
-                  display: 'flex', alignItems: 'center', gap: 6, padding: '6px 12px', borderRadius: 20, 
-                  background: isDeepMode ? '#000' : '#f1f5f9', color: isDeepMode ? '#fff' : '#64748b',
-                  fontSize: '0.75rem', fontWeight: 600, cursor: 'pointer', transition: 'all 0.2s'
-                }}
-              >
-                {isDeepMode ? <Globe size={14} /> : <Shield size={14} />}
-                <span>{isDeepMode ? 'Deep Web' : 'Local'}</span>
-              </div>
-              
-              <input
-                type="text"
-                className="chat-input"
-                placeholder={isDeepMode ? "Nhập chủ đề cần nghiên cứu sâu trên Internet..." : "Hỏi về tài liệu trong Wiki..."}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSend()}
-              />
-              <button 
-                className={`btn-icon-xs primary ${(!input.trim() || loading) ? 'opacity-50' : ''}`}
-                onClick={handleSend}
-                disabled={!input.trim() || loading}
-                style={{ width: 36, height: 36, borderRadius: 8 }}
-              >
-                <Send size={18} />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="sources-section">
-          <div className="sources-header">
-            <h3>{isDeepMode ? <Globe size={16} /> : <BookOpen size={16} />} {isDeepMode ? 'Nguồn từ Internet' : 'Tài liệu tham khảo'}</h3>
-          </div>
-          <div className="sources-list">
-            {currentSources.length === 0 ? (
-              <div className="empty-state" style={{ border: 'none' }}>
-                <Quote size={24} className="empty-chat-icon" />
-                <p>Trích dẫn sẽ hiện ở đây</p>
-              </div>
-            ) : (
-              currentSources.map(src => (
-                <div 
-                  key={src.id} 
-                  className={`source-item-card ${selectedSourceId === src.id ? 'active' : ''}`}
-                  onClick={() => {
-                    if (src.url) window.open(src.url, '_blank');
-                    setSelectedSourceId(src.id);
-                  }}
-                >
-                  <div className="source-id">NGUỒN [{src.id}]</div>
-                  <div className="source-title" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    {src.url && <Globe size={12} />}
-                    {src.title}
-                  </div>
-                  <div className="source-snippet">{src.content}</div>
+          {!isExecutingDeep && (
+            <div className="chat-input-container">
+                <div className="chat-input-wrapper">
+                <div className="mode-pills" style={{ marginBottom: 4 }}>
+                    {(Object.keys(modeConfig) as ResearchMode[]).map(m => (
+                    <div key={m} className={`mode-pill ${mode === m ? 'active' : ''} ${m === 'deep' ? 'deep' : ''}`} onClick={() => setMode(m)}>
+                        {modeConfig[m].icon}<span>{modeConfig[m].label}</span>
+                    </div>
+                    ))}
                 </div>
-              ))
-            )}
-          </div>
-          {selectedSourceId && currentSources.find(s => s.id === selectedSourceId) && (
-            <div style={{ padding: 12, borderTop: '1px solid var(--border)', background: '#fff' }}>
-              <div className="badge badge-info" style={{ marginBottom: 8 }}>
-                <Info size={12} style={{ marginRight: 4 }} /> Đang xem nguồn [{selectedSourceId}]
-              </div>
-              <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', wordBreak: 'break-all' }}>
-                Nguồn: {currentSources.find(s => s.id === selectedSourceId)?.url || currentSources.find(s => s.id === selectedSourceId)?.filename}
-              </div>
+                
+                <div className="chat-input-row">
+                    <textarea 
+                    className="chat-input" 
+                    placeholder={modeConfig[mode].placeholder} 
+                    value={input} 
+                    onChange={e => setInput(e.target.value)} 
+                    onKeyDown={e => e.key === 'Enter' && !e.shiftKey && (e.preventDefault(), handleSend())}
+                    rows={1}
+                    onInput={(e: any) => {
+                        e.target.style.height = 'auto';
+                        e.target.style.height = e.target.scrollHeight + 'px';
+                    }}
+                    />
+                    <button 
+                    className={`btn-icon primary ${(!input.trim() || loading) ? 'opacity-50' : ''}`} 
+                    onClick={handleSend} 
+                    disabled={!input.trim() || loading} 
+                    style={{ width: 40, height: 40, borderRadius: 12, marginTop: 4 }}
+                    >
+                    <Send size={20} />
+                    </button>
+                </div>
+
+                <div className="chat-input-footer">
+                    <div className="selectors-group">
+                    <div className="selector-btn">
+                        <Cpu size={14} />
+                        <select value={provider} onChange={e => setProvider(e.target.value)} style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }}>
+                        <option value="gemini">Gemini</option>
+                        <option value="vertexai">Vertex AI</option>
+                        <option value="ollama">Ollama</option>
+                        </select>
+                        <ChevronDown size={12} />
+                    </div>
+
+                    <div className="selector-btn">
+                        <Layout size={14} />
+                        <select value={model} onChange={e => setModel(e.target.value)} style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', fontWeight: 600, outline: 'none', cursor: 'pointer', maxWidth: '100px' }}>
+                        {models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                        </select>
+                        <ChevronDown size={12} />
+                    </div>
+
+                    <div style={{ width: 1, height: 16, background: '#e2e8f0', margin: '0 4px' }} />
+
+                    <button className={`selector-btn ${searchIn === 'all' ? 'active' : ''}`} onClick={() => setSearchIn('all')}>
+                        <Globe size={14} /> <span>Tất cả</span>
+                    </button>
+                    <button className={`selector-btn ${searchIn === 'wiki' ? 'active' : ''}`} onClick={() => setSearchIn('wiki')}>
+                        <Database size={14} /> <span>Wiki</span>
+                    </button>
+                    <button className={`selector-btn ${searchIn === 'web' ? 'active' : ''}`} onClick={() => setSearchIn('web')}>
+                        <FileText size={14} /> <span>Web</span>
+                    </button>
+                    </div>
+                </div>
+                </div>
             </div>
           )}
         </div>
+
+        {!isExecutingDeep && (
+          <div className="sources-section">
+            <div className="sidebar-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: '#fff' }}>
+              <button className={`tab-btn ${rightPanelTab === 'history' ? 'active' : ''}`} onClick={() => setRightPanelTab('history')} style={{ flex: 1, padding: '12px', border: 'none', background: 'none', fontSize: '0.85rem', fontWeight: 600, color: rightPanelTab === 'history' ? 'var(--primary)' : 'var(--text-secondary)', borderBottom: rightPanelTab === 'history' ? '2px solid var(--primary)' : 'none', borderRadius: '12px 12px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Clock size={14} /> Lịch sử
+              </button>
+              <button className={`tab-btn ${rightPanelTab === 'sources' ? 'active' : ''}`} onClick={() => setRightPanelTab('sources')} style={{ flex: 1, padding: '12px', border: 'none', background: 'none', fontSize: '0.85rem', fontWeight: 600, color: rightPanelTab === 'sources' ? 'var(--primary)' : 'var(--text-secondary)', borderBottom: rightPanelTab === 'sources' ? '2px solid var(--primary)' : 'none', borderRadius: '12px 12px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Globe size={14} /> Nguồn [{currentSources.length}]
+              </button>
+            </div>
+            <div className="sources-list" style={{ flex: 1, overflowY: 'auto' }}>
+              {rightPanelTab === 'history' ? (
+                historyItems.map(item => (
+                  <div key={item.id} className="history-item-card" onClick={() => handleLoadHistory(item)} style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 12, margin: '8px 12px', cursor: 'pointer', background: 'white' }}>
+                    <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginBottom: 4 }}>{new Date(item.timestamp).toLocaleDateString()}</div>
+                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.query}</div>
+                  </div>
+                ))
+              ) : (
+                currentSources.map(src => (
+                  <div key={src.id} className={`source-item-card ${selectedSourceId === src.id ? 'active' : ''}`} onClick={() => { if (src.url) window.open(src.url, '_blank'); setSelectedSourceId(src.id); }} style={{ margin: '8px 12px' }}>
+                    <div className="source-id">NGUỒN [{src.id}]</div>
+                    <div className="source-title">{src.title}</div>
+                    <div className="source-snippet">{src.content}</div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

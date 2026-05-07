@@ -7,15 +7,20 @@ export const DashboardView: React.FC = () => {
   const [discovery, setDiscovery] = useState<any>(null);
 
   const fetchData = async () => {
+    // Fetch stats first
     try {
-      const [statsRes, discoveryRes] = await Promise.all([
-        AdminApi.getStats(),
-        AdminApi.getDiscovery()
-      ]);
+      const statsRes = await AdminApi.getStats();
       setStats(statsRes.data);
+    } catch (e) {
+      console.error('Failed to fetch stats', e);
+    }
+
+    // Then fetch discovery
+    try {
+      const discoveryRes = await AdminApi.getDiscovery();
       setDiscovery(discoveryRes.data);
     } catch (e) {
-      console.error('Failed to fetch dashboard data', e);
+      console.error('Failed to fetch discovery', e);
     }
   };
 

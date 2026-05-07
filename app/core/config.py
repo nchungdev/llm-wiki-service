@@ -118,8 +118,9 @@ def load_config() -> AppConfig:
     
     # Critical: Ensure system directories exist immediately
     try:
-        os.makedirs(config.storage.system_dir, exist_ok=True)
-        os.makedirs(config.storage.vault_dir, exist_ok=True)
+        for p in [config.storage.system_dir, config.storage.vault_dir]:
+            if p and "/path/to/your" not in p:
+                os.makedirs(p, exist_ok=True)
     except Exception as e:
         logger.warning(f"⚠️ Could not create directories: {e}")
     

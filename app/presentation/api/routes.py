@@ -320,8 +320,12 @@ def create_router(
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.post("/research/deep")
-    async def deep_research(request: ChatRequest):
+    async def deep_research(request: Request):
         try:
+            payload = await request.json()
+            message = payload.get("message")
+            plan = payload.get("plan")
+            
             from app.core.container import container
             from app.domain.use_cases.deep_research_use_cases import DeepResearchUseCase
             
@@ -332,9 +336,70 @@ def create_router(
                 system_dir=container.config.storage.system_dir
             )
             
-            return await use_case.execute(request.message)
+            return await use_case.execute(message, plan=plan)
         except Exception as e:
             logger.error(f"Deep Research error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/research/deep/plan")
+    async def deep_research_plan(request: Request):
+        try:
+            payload = await request.json()
+            message = payload.get("message")
+            
+            from app.core.container import container
+            from app.domain.use_cases.deep_research_use_cases import DeepResearchUseCase
+            
+            use_case = DeepResearchUseCase(
+                container.ai_provider,
+                container.search_provider,
+                container.url_scraper,
+                system_dir=container.config.storage.system_dir
+            )
+            
+            return await use_case.generate_plan(message)
+        except Exception as e:
+            logger.error(f"Plan generation error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/research/extract")
+    async def research_extract(payload: dict):
+        url = payload.get("url")
+        if not url: raise HTTPException(status_code=400, detail="URL is required")
+        try:
+            results = await pipeline_use_case.run([url])
+            return results[0]
+        except Exception as e:
+            logger.error(f"Extract error: {e}")
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @router.post("/research/crawl")
+    async def research_crawl(payload: dict):
+        url = payload.get("url")
+        if not url: raise HTTPException(status_code=400, detail="URL is required")
+        try:
+            # 1. Inspect to get name/type
+            from app.presentation.api.routes import inspect_source
+            info = await inspect_source({"url": url})
+            if info.get("status") == "error":
+                info = {"name": url.split("//")[-1][:30], "url": url, "type": "web", "category": "General"}
+            
+            # 2. Add to sources
+            from app.domain.models import Source
+            new_src = Source(
+                id=f"quick_{int(datetime.now().timestamp())}",
+                name=info.get("name"),
+                url=info.get("url"),
+                type=info.get("type"),
+                category=info.get("category", "General")
+            )
+            source_provider.add_source(new_src)
+            
+            # 3. Trigger crawl
+            await manual_trigger_use_case.execute(source_id=new_src.id)
+            return {"status": "success", "source": new_src}
+        except Exception as e:
+            logger.error(f"Quick crawl error: {e}")
             raise HTTPException(status_code=500, detail=str(e))
 
     @router.get("/research/history")

@@ -17,7 +17,9 @@ class ChatRequest(BaseModel):
     message: str
     history: Optional[List[dict]] = []
     agent_type: Optional[str] = "general"
+    provider: Optional[str] = None
     model: Optional[str] = None
+    search_in: Optional[str] = "all"  # all, wiki, web
 
 class ChatResponse(BaseModel):
     response: str

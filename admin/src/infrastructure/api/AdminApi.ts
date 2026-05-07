@@ -53,7 +53,10 @@ export const AdminApi = {
   getStats: () => api.get<any>('/admin/stats'),
   getAvailableModels: (provider?: string) => api.get<{models: {id: string, label: string}[]}>('/ai/models', { params: { provider } }),
   getAIAvailability: () => api.get<Record<string, {available: boolean, message: string}>>('/ai/availability'),
-  chatWithAI: (message: string) => api.post<ChatResponse>('/chat', { message }),
-  deepResearch: (message: string) => api.post<ChatResponse>('/research/deep', { message }),
+  chatWithAI: (message: string, params?: any) => api.post<ChatResponse>('/chat', { message, ...params }),
+  deepResearch: (message: string, plan?: any, params?: any) => api.post<ChatResponse>('/research/deep', { message, plan, ...params }),
+  getDeepResearchPlan: (message: string) => api.post<any>('/research/deep/plan', { message }),
+  extractKnowledge: (url: string) => api.post<any>('/research/extract', { url }),
+  triggerQuickCrawl: (url: string) => api.post<any>('/research/crawl', { url }),
   getResearchHistory: () => api.get<any[]>('/research/history'),
 };

@@ -18,15 +18,33 @@ class DeepResearchUseCase:
         self.url_scraper = url_scraper
         self.system_dir = system_dir
 
-    async def execute(self, user_prompt: str, on_progress: Optional[Callable[[str], None]] = None):
+    async def generate_plan(self, user_prompt: str) -> Dict:
+        """Step 1: Just generate the plan and queries for user review."""
+        queries = await self._plan_queries(user_prompt)
+        return {
+            "query": user_prompt,
+            "search_queries": queries,
+            "steps": [
+                {"id": 1, "text": f"Tìm kiếm thông tin về: {q}", "type": "search"} for q in queries
+            ] + [
+                {"id": 99, "text": "Tổng hợp và viết báo cáo chuyên sâu", "type": "synthesize"}
+            ]
+        }
+
+    async def execute(self, user_prompt: str, plan: Optional[Dict] = None, on_progress: Optional[Callable[[str], None]] = None):
         """
-        Execute the Deep Research Agentic Workflow:
-        Plan -> Search -> Scrape -> Synthesize
+        Execute the Deep Research Agentic Workflow.
+        If plan is provided, use its search_queries.
         """
         try:
-            # --- STEP 1: QUERY PLANNER ---
-            if on_progress: on_progress("🔍 Đang phân tích yêu cầu và lên kế hoạch tìm kiếm...")
-            queries = await self._plan_queries(user_prompt)
+            # --- STEP 1: QUERY PLANNER (or use provided plan) ---
+            if plan and "search_queries" in plan:
+                queries = plan["search_queries"]
+                if on_progress: on_progress(f"🚀 Bắt đầu nghiên cứu dựa trên kế hoạch ({len(queries)} câu truy vấn)...")
+            else:
+                if on_progress: on_progress("🔍 Đang phân tích yêu cầu và lên kế hoạch tìm kiếm...")
+                queries = await self._plan_queries(user_prompt)
+            
             logger.info(f"Planned queries: {queries}")
 
             # --- STEP 2: SEARCH EXECUTION ---

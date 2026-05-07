@@ -52,12 +52,14 @@ class GetDiscoveryUseCase:
 
     async def execute(self):
         now = datetime.now().timestamp()
+        # If empty or expired, trigger background fetch but don't block
         if not self._cached_items or (now - self._last_fetch > 3600):
-            await self._fetch_trending_topics()
+            # Run in background to avoid blocking dashboard load
+            asyncio.create_task(self._fetch_trending_topics())
         
         return {
             "items": self._cached_items,
-            "last_updated": datetime.fromtimestamp(self._last_fetch).strftime("%Y-%m-%d %H:%M:%S")
+            "last_updated": datetime.fromtimestamp(self._last_fetch).strftime("%Y-%m-%d %H:%M:%S") if self._last_fetch > 0 else "Chưa có dữ liệu"
         }
 
     async def _fetch_trending_topics(self):
