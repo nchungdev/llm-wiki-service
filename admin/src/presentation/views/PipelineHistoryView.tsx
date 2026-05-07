@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { RefreshCw, CheckCircle2, XCircle, Loader2, Clock, Database, Zap, AlertTriangle } from 'lucide-react';
+import { RefreshCw, CheckCircle2, XCircle, Loader2, Database, Zap, AlertTriangle } from 'lucide-react';
 import { usePipelineStore } from '../../application/store/usePipelineStore';
 
 const statusConfig = {
@@ -35,87 +35,88 @@ export const PipelineHistoryView: React.FC = () => {
   }, [fetchHistory]);
 
   return (
-    <div className="view-panel active" style={{ flexDirection: 'column', gap: 0 }}>
+    <div className="view-panel active">
+      <div className="card" style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+        <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <h3 className="card-title">Lịch sử thực thi Pipeline</h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{history.length} lần chạy gần nhất</span>
+            <button className="icon-button" onClick={fetchHistory} title="Làm mới">
+              <RefreshCw size={14} />
+            </button>
+          </div>
+        </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{history.length} lần chạy gần nhất</span>
-        <button className="icon-button" onClick={fetchHistory} title="Làm mới">
-          <RefreshCw size={14} />
-        </button>
+        <div className="card-body" style={{ flex: 1, overflowY: 'auto' }}>
+          {history.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>
+              Chưa có lịch sử pipeline.
+            </div>
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Trạng thái</th>
+                  <th>Mã phiên</th>
+                  <th>Thời gian bắt đầu</th>
+                  <th>Thời lượng</th>
+                  <th>Nguồn xử lý</th>
+                  <th>Bài thu thập</th>
+                  <th>Lỗi</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((run) => {
+                  const cfg = statusConfig[run.status] || statusConfig.failed;
+                  return (
+                    <tr key={run.id}>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: cfg.color, fontWeight: 600, fontSize: '0.8125rem' }}>
+                          {cfg.icon} {cfg.label}
+                        </div>
+                      </td>
+                      <td>
+                        <span style={{ fontFamily: 'monospace', fontSize: '0.75rem', background: 'var(--bg-secondary)', padding: '2px 6px', borderRadius: '4px' }}>
+                          #{run.id?.slice(-6) || '–'}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                          {formatTime(run.start_time)}
+                        </span>
+                      </td>
+                      <td>
+                        <span style={{ fontSize: '0.8125rem', color: 'var(--text-secondary)' }}>
+                          {formatDuration(run.start_time, run.end_time)}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem' }}>
+                          <Database size={12} color="var(--text-tertiary)" /> {run.sources_processed}
+                        </div>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8125rem' }}>
+                          <Zap size={12} color="var(--text-tertiary)" /> {run.items_found}
+                        </div>
+                      </td>
+                      <td>
+                        {run.errors?.length > 0 ? (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: 'var(--error)', fontSize: '0.8125rem', fontWeight: 600 }}>
+                            <AlertTriangle size={12} /> {run.errors.length}
+                          </div>
+                        ) : (
+                          <span style={{ color: 'var(--text-tertiary)', fontSize: '0.8125rem' }}>–</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
-
-      {history.length === 0 ? (
-        <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-tertiary)', fontSize: '0.875rem' }}>
-          Chưa có lịch sử pipeline.
-        </div>
-      ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxWidth: '720px' }}>
-          {history.map((run) => {
-            const cfg = statusConfig[run.status] || statusConfig.failed;
-            const hasErrors = run.errors && run.errors.length > 0;
-            return (
-              <div key={run.id} style={{
-                background: 'var(--bg-secondary)',
-                border: '1px solid var(--border)',
-                borderLeft: `3px solid ${cfg.color}`,
-                borderRadius: 'var(--radius-lg)',
-                padding: '12px 14px',
-              }}>
-                {/* Top row */}
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ color: cfg.color, display: 'flex', alignItems: 'center' }}>{cfg.icon}</span>
-                    <span style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                      {cfg.label}
-                    </span>
-                    <span style={{
-                      fontSize: '0.65rem', padding: '1px 7px', borderRadius: '10px',
-                      background: cfg.bg, color: cfg.color, fontWeight: 700, border: `1px solid ${cfg.color}22`
-                    }}>
-                      Run #{run.id?.slice(-6) || '–'}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Clock size={11} /> {formatTime(run.start_time)}
-                  </span>
-                </div>
-
-                {/* Stats row */}
-                <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    <Database size={12} /> <strong>{run.sources_processed}</strong> nguồn
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    <Zap size={12} /> <strong>{run.items_found}</strong> bài xử lý
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-                    <Clock size={12} /> {formatDuration(run.start_time, run.end_time)}
-                  </div>
-                  {hasErrors && (
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.75rem', color: '#ef4444' }}>
-                      <AlertTriangle size={12} /> {run.errors.length} lỗi
-                    </div>
-                  )}
-                </div>
-
-                {/* Error details */}
-                {hasErrors && (
-                  <div style={{ marginTop: '8px', padding: '6px 8px', background: '#fef2f2', borderRadius: '6px', display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                    {run.errors.slice(0, 3).map((err, i) => (
-                      <div key={i} style={{ fontSize: '0.68rem', color: '#dc2626', fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {err}
-                      </div>
-                    ))}
-                    {run.errors.length > 3 && (
-                      <div style={{ fontSize: '0.65rem', color: '#ef4444' }}>+{run.errors.length - 3} more…</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       <style>{`.spin { animation: spin 0.9s linear infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>

@@ -25,20 +25,6 @@ const SCORE_COLORS: Record<string, string> = {
   '8': '#10b981', '9': '#10b981', '10': '#10b981',
 };
 
-// ── Stat Card ──────────────────────────────────────────────
-const StatCard: React.FC<{
-  icon: React.ReactNode; value: string | number; label: string; color?: string; sub?: string;
-}> = ({ icon, value, label, color = 'var(--primary)', sub }) => (
-  <div className="vault-stat-card">
-    <div className="vault-stat-icon" style={{ background: color + '18', color }}>{icon}</div>
-    <div className="vault-stat-body">
-      <div className="vault-stat-value">{value}</div>
-      <div className="vault-stat-label">{label}</div>
-      {sub && <div className="vault-stat-sub">{sub}</div>}
-    </div>
-  </div>
-);
-
 // ── Score bar ──────────────────────────────────────────────
 const ScoreBar: React.FC<{ dist: Record<string, number>; total: number }> = ({ dist }) => {
   const scored = Object.values(dist).reduce((a, b) => a + b, 0);
@@ -205,122 +191,129 @@ export const VaultView: React.FC = () => {
     : '#ef4444';
 
   return (
-    <div className="view-panel active vault-view">
+    <div className="view-panel active vault-view" style={{ overflowY: 'auto' }}>
       {/* Inline toolbar: scan time + refresh — title comes from sidebar header */}
-      <div className="vault-toolbar">
-        {lastScan && <span className="vault-subtitle">Quét lúc {lastScan}</span>}
+      <div className="vault-toolbar" style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '16px', gap: '12px' }}>
+        {lastScan && <span className="vault-subtitle" style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>Quét lúc {lastScan}</span>}
         <button className="icon-button" onClick={runAudit} disabled={loading} title="Re-scan">
           <RefreshCw size={14} className={loading ? 'spin' : ''} />
         </button>
       </div>
 
       {loading && !report && (
-        <div className="vault-loading">
-          <Loader2 size={22} className="spin" />
-          <span>Scanning vault…</span>
+        <div className="vault-loading" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '100px' }}>
+          <Loader2 size={32} className="spin" color="var(--primary)" />
+          <span style={{ marginTop: '16px', color: 'var(--text-secondary)' }}>Scanning vault…</span>
         </div>
       )}
 
       {report && (
-        <div className="vault-body">
+        <div className="vault-body" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
 
           {/* Stat Cards */}
-          <div className="vault-stats-row">
-            <StatCard icon={<FileText size={16} />} value={report.total} label="Total Notes" color="#6366f1" />
-            <StatCard
-              icon={<TrendingUp size={16} />}
-              value={`${healthPct}%`}
-              label="Health Score"
-              color={healthColor}
-              sub={totalIssues > 0 ? `${totalIssues} issues found` : 'No issues'}
-            />
-            <StatCard
-              icon={<ShieldAlert size={16} />}
-              value={criticalIssues}
-              label="Critical Issues"
-              color={criticalIssues > 0 ? '#ef4444' : '#10b981'}
-            />
+          <div className="vault-stats-row" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '16px' }}>
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: '#6366f118', color: '#6366f1' }}><FileText size={20} /></div>
+              <div className="stat-info">
+                <span className="label">Total Notes</span>
+                <h3>{report.total}</h3>
+              </div>
+            </div>
+            
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: healthColor + '18', color: healthColor }}><TrendingUp size={20} /></div>
+              <div className="stat-info">
+                <span className="label">Health Score</span>
+                <h3 style={{ color: healthColor }}>{healthPct}%</h3>
+                {totalIssues > 0 && <span style={{ fontSize: '0.7rem', color: 'var(--text-tertiary)' }}>{totalIssues} issues found</span>}
+              </div>
+            </div>
+
+            <div className="stat-card">
+              <div className="stat-icon" style={{ background: criticalIssues > 0 ? '#ef444418' : '#10b98118', color: criticalIssues > 0 ? '#ef4444' : '#10b981' }}><ShieldAlert size={20} /></div>
+              <div className="stat-info">
+                <span className="label">Critical Issues</span>
+                <h3 style={{ color: criticalIssues > 0 ? '#ef4444' : '#10b981' }}>{criticalIssues}</h3>
+              </div>
+            </div>
           </div>
 
-          {/* Score Distribution */}
-          <div className="vault-card">
-            <div className="vault-card-header">
-              <BarChart2 size={13} />
-              <span>Score Distribution</span>
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <BarChart2 size={15} color="var(--text-secondary)" />
+              <h3 className="card-title">Phân bổ điểm chất lượng</h3>
             </div>
-            <div className="vault-card-body">
+            <div className="card-body">
               <ScoreBar dist={report.score_distribution} total={report.total} />
             </div>
           </div>
 
-          {/* Issues */}
-          <div className="vault-card">
-            <div className="vault-card-header">
-              <AlertTriangle size={13} />
-              <span>Issues Detected</span>
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '12px', marginBottom: '0' }}>
+              <AlertTriangle size={15} color="var(--warning)" />
+              <h3 className="card-title" style={{ flex: 1 }}>Các vấn đề được phát hiện</h3>
               {totalIssues === 0 && (
-                <span className="vault-all-clear">All clear ✓</span>
+                <span className="badge badge-success">All clear ✓</span>
               )}
             </div>
             <div className="issue-list-wrap">
               <IssuePanel
-                title="No score" icon={<Star size={14} />} accentColor="#f59e0b"
+                title="No score (Chưa chấm điểm)" icon={<Star size={14} />} accentColor="#f59e0b"
                 count={counts.no_score || 0} items={issues?.no_score || []}
                 action={
-                  <ActionBtn label="Re-score AI" state={actions.rescore || 'idle'}
+                  <ActionBtn label="Chấm điểm AI" state={actions.rescore || 'idle'}
                     result={results.rescore}
                     onClick={() => runAction('rescore', 'rescore')} />
                 }
               />
               <IssuePanel
-                title="Low score ≤3 in Feed" icon={<Trash2 size={14} />} accentColor="#ef4444"
+                title="Low score (Điểm thấp ≤3)" icon={<Trash2 size={14} />} accentColor="#ef4444"
                 count={counts.low_score || 0} items={issues?.low_score || []}
                 action={
-                  <ActionBtn label="Delete all" state={actions.low_score || 'idle'}
+                  <ActionBtn label="Xóa tất cả" state={actions.low_score || 'idle'}
                     result={results.low_score} danger
                     onClick={() => runAction('low_score', 'delete_low_score', { threshold: 3 })} />
                 }
               />
               <IssuePanel
-                title="Expired notes" icon={<Clock size={14} />} accentColor="#f97316"
+                title="Notes hết hạn" icon={<Clock size={14} />} accentColor="#f97316"
                 count={counts.expired || 0} items={issues?.expired || []}
                 action={
-                  <ActionBtn label="Delete expired" state={actions.expired || 'idle'}
+                  <ActionBtn label="Xóa hết hạn" state={actions.expired || 'idle'}
                     result={results.expired} danger
                     onClick={() => runAction('expired', 'delete_expired')} />
                 }
               />
               <IssuePanel
-                title="Old structure (outside Feed/Knowledge)" icon={<FolderInput size={14} />} accentColor="#8b5cf6"
+                title="Cấu trúc cũ (Cần migrate)" icon={<FolderInput size={14} />} accentColor="#8b5cf6"
                 count={counts.old_structure || 0} items={issues?.old_structure || []}
                 action={
-                  <ActionBtn label="Migrate → Knowledge/" state={actions.migrate || 'idle'}
+                  <ActionBtn label="Migrate ngay" state={actions.migrate || 'idle'}
                     result={results.migrate}
                     onClick={() => runAction('migrate', 'migrate_old')} />
                 }
               />
               <IssuePanel
-                title="Orphan (no wikilink)" icon={<Unlink size={14} />} accentColor="#64748b"
+                title="Orphan (Không có liên kết)" icon={<Unlink size={14} />} accentColor="#64748b"
                 count={counts.orphans || 0} items={issues?.orphans || []}
               />
               <IssuePanel
-                title="Broken wikilinks" icon={<Link2Off size={14} />} accentColor="#dc2626"
+                title="Liên kết hỏng (Broken links)" icon={<Link2Off size={14} />} accentColor="#dc2626"
                 count={counts.broken_links || 0} items={issues?.broken_links || []}
               />
             </div>
           </div>
 
-          {/* Maintenance */}
-          <div className="vault-card">
-            <div className="vault-card-header">
-              <RefreshCcw size={13} />
-              <span>Maintenance</span>
+          <div className="card">
+            <div className="card-header" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <RefreshCcw size={15} color="var(--text-secondary)" />
+              <h3 className="card-title">Bảo trì hệ thống</h3>
             </div>
-            <div className="vault-card-body">
-              <div className="maint-row">
+            <div className="card-body">
+              <div className="maint-row" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>
-                  <div className="maint-title">Rebuild Series MOC</div>
-                  <div className="maint-desc">Tái tạo các file Atlas/Series/ từ frontmatter hiện có</div>
+                  <div className="maint-title" style={{ fontWeight: 600, fontSize: '0.9rem' }}>Rebuild Series MOC</div>
+                  <div className="maint-desc" style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Tái tạo các file Atlas/Series/ từ frontmatter hiện có</div>
                 </div>
                 <ActionBtn label="Rebuild MOC" state={actions.moc || 'idle'}
                   result={results.moc}
@@ -331,6 +324,7 @@ export const VaultView: React.FC = () => {
 
         </div>
       )}
+      <style>{`.spin { animation: spin 0.9s linear infinite; } @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
     </div>
   );
 };

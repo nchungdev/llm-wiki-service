@@ -22,6 +22,7 @@ export const ResearchView: React.FC = () => {
   const [historyItems, setHistoryItems] = useState<any[]>([]);
   const [statusMsg, setStatusMsg] = useState('');
   const [researchPlan, setResearchPlan] = useState<any>(null);
+  const [editedSteps, setEditedSteps] = useState<any[]>([]);
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [rightPanelTab, setRightPanelTab] = useState<'history' | 'sources'>('history');
@@ -92,6 +93,7 @@ export const ResearchView: React.FC = () => {
         setStatusMsg('🔍 Đang lập kế hoạch nghiên cứu...');
         const res = await AdminApi.getDeepResearchPlan(currentInput);
         setResearchPlan(res.data);
+        setEditedSteps(res.data.steps ? [...res.data.steps] : []);
         setLoading(false);
         return;
       } else if (currentMode === 'extract') {
@@ -121,8 +123,10 @@ export const ResearchView: React.FC = () => {
   };
 
   const executeDeepResearch = async () => {
-    const planToRun = researchPlan;
+    // Merge edited steps back into plan before running
+    const planToRun = { ...researchPlan, steps: editedSteps };
     setResearchPlan(null);
+    setEditedSteps([]);
     setIsExecutingDeep(true);
     setLoading(true);
     setStatusMsg('🚀 Đang thực thi kế hoạch nghiên cứu chuyên sâu...');
@@ -214,32 +218,6 @@ export const ResearchView: React.FC = () => {
               </div>
             )}
 
-            {researchPlan && (
-              <div className="message-bubble message-ai" style={{ width: '100%', maxWidth: '750px', border: '1px solid var(--primary)', background: '#f8fafc', alignSelf: 'center' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <div style={{ background: 'var(--primary)', padding: 6, borderRadius: 6 }}><Zap size={16} color="white" /></div>
-                        <h4 style={{ margin: 0 }}>Kế hoạch Nghiên cứu Deep Research</h4>
-                    </div>
-                    <button className="btn-icon-xs" onClick={() => setResearchPlan(null)}><X size={14} /></button>
-                </div>
-                <div style={{ background: 'white', borderRadius: 12, padding: 20, border: '1px solid var(--border)', marginBottom: 20 }}>
-                    <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 12 }}>
-                        {researchPlan.steps.map((step: any) => (
-                            <li key={step.id} style={{ display: 'flex', gap: 10, fontSize: '0.85rem' }}>
-                                {step.type === 'search' ? <Search size={14} style={{ marginTop: 2, color: 'var(--primary)' }} /> : <Zap size={14} style={{ marginTop: 2, color: 'var(--accent)' }} />}
-                                <span>{step.text}</span>
-                            </li>
-                        ))}
-                    </ul>
-                </div>
-                <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-                    <button className="btn-secondary btn-sm" onClick={() => setResearchPlan(null)}>Hủy bỏ</button>
-                    <button className="btn-primary btn-sm" onClick={executeDeepResearch}>Bắt đầu nghiên cứu</button>
-                </div>
-              </div>
-            )}
-
             {isExecutingDeep && (
               <div style={{ maxWidth: '800px', margin: '0 auto', width: '100%' }}>
                 <div className="message-bubble message-ai" style={{ width: '100%', background: 'transparent', border: 'none', padding: 0 }}>
@@ -286,6 +264,44 @@ export const ResearchView: React.FC = () => {
               </div>
             ))}
             
+            {/* Research plan — appears after user message, before AI response */}
+            {researchPlan && (
+              <div className="research-plan-card">
+                <div className="research-plan-header">
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <div style={{ background: 'var(--primary)', padding: 6, borderRadius: 8 }}><Zap size={14} color="white" /></div>
+                    <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Kế hoạch Nghiên cứu Deep Research</span>
+                  </div>
+                  <button className="btn-icon-xs" onClick={() => setResearchPlan(null)}><X size={14} /></button>
+                </div>
+
+                <div className="research-plan-steps">
+                  {editedSteps.map((step: any, idx: number) => (
+                    <div key={step.id ?? idx} className="research-plan-step">
+                      <span className="step-icon">
+                        {step.type === 'search' ? <Search size={13} /> : <Zap size={13} />}
+                      </span>
+                      <input
+                        className="step-input"
+                        value={step.text}
+                        onChange={e => {
+                          const next = [...editedSteps];
+                          next[idx] = { ...next[idx], text: e.target.value };
+                          setEditedSteps(next);
+                        }}
+                        placeholder="Nhập câu lệnh tìm kiếm..."
+                      />
+                    </div>
+                  ))}
+                </div>
+
+                <div className="research-plan-footer">
+                  <button className="btn btn-secondary btn-sm" onClick={() => setResearchPlan(null)}>Hủy bỏ</button>
+                  <button className="btn btn-primary btn-sm" onClick={executeDeepResearch}>Bắt đầu nghiên cứu</button>
+                </div>
+              </div>
+            )}
+
             {loading && !isExecutingDeep && (
               <div className="thought-process">
                 <RefreshCw size={16} className="thought-spinner" />

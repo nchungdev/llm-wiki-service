@@ -3,8 +3,8 @@
   grid-template-columns: 1fr 350px;
   flex: 1;
   min-height: 0;
-  gap: 0;
-  padding: 16px 20px;
+  gap: 24px;
+  padding: 24px;
   background: var(--bg-secondary);
   transition: grid-template-columns 0.5s cubic-bezier(0.4, 0, 0.2, 1);
   overflow: hidden;
@@ -19,7 +19,7 @@
 .deep-progress-panel {
   background: #111827;
   color: #fff;
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   padding: 24px;
   margin-top: 20px;
   animation: fadeIn 0.5s ease;
@@ -392,4 +392,77 @@
   -webkit-line-clamp: 3;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+/* ── Research Plan Card ─────────────────────────────────── */
+.research-plan-card {
+  background: #fff;
+  border: 1.5px solid var(--primary);
+  border-radius: 16px;
+  padding: 16px 20px;
+  max-width: 680px;
+  align-self: flex-start;
+  box-shadow: 0 4px 20px rgba(0, 122, 255, 0.08);
+  animation: slideIn 0.25s ease-out;
+}
+
+.research-plan-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.research-plan-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: #f8fafc;
+  border-radius: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  margin-bottom: 14px;
+}
+
+.research-plan-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.step-icon {
+  display: flex;
+  align-items: center;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.step-input {
+  flex: 1;
+  border: 1px solid transparent;
+  background: transparent;
+  padding: 5px 8px;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  border-radius: 6px;
+  outline: none;
+  font-family: inherit;
+  transition: all 0.15s;
+}
+
+.step-input:hover {
+  background: #fff;
+  border-color: var(--border);
+}
+
+.step-input:focus {
+  background: #fff;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.08);
+}
+
+.research-plan-footer {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
 }
