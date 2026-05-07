@@ -1,3 +1,5 @@
+/* ── Sidebar base ───────────────────────────────────────── */
+
 .sidebar,
 .admin-sidebar {
     width: var(--sidebar-width);
@@ -5,53 +7,87 @@
     color: white;
     display: flex;
     flex-direction: column;
-    padding: 24px 0;
+    padding: 20px 0;
+    transition: width 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+    overflow: hidden;
 }
+
+.sidebar-collapsed {
+    width: 60px;
+}
+
+/* ── Header ─────────────────────────────────────────────── */
 
 .brand,
 .sidebar-header {
-    padding: 0 24px 32px;
+    padding: 0 14px 24px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 1.1rem;
-    font-weight: 700;
-    letter-spacing: -0.02em;
+    justify-content: space-between;
+    gap: 8px;
+    min-height: 52px;
 }
 
 .logo {
     display: flex;
     align-items: center;
-    gap: 12px;
-    font-size: 1.1rem;
+    gap: 10px;
+    font-size: 1rem;
     font-weight: 700;
     letter-spacing: -0.02em;
     color: white;
+    overflow: hidden;
+    white-space: nowrap;
 }
 
 .logo-icon {
     color: var(--primary);
+    width: 24px;
+    height: 24px;
+    flex-shrink: 0;
+}
+
+.sidebar-collapse-btn {
     width: 28px;
     height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    color: #6b7280;
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    transition: all 0.15s;
+    flex-shrink: 0;
 }
+
+.sidebar-collapse-btn:hover {
+    color: white;
+    background: rgba(255,255,255,0.08);
+}
+
+/* ── Nav ────────────────────────────────────────────────── */
 
 .nav-menu {
     flex: 1;
-    padding: 0 12px;
+    padding: 0 8px;
 }
 
 .nav-item {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 12px 16px;
+    gap: 10px;
+    padding: 10px 12px;
     color: #a1a1a6;
     text-decoration: none;
-    font-size: 0.95rem;
+    font-size: 0.875rem;
     font-weight: 500;
     border-radius: var(--radius-md);
-    margin-bottom: 4px;
+    margin-bottom: 2px;
     transition: var(--transition);
+    white-space: nowrap;
+    overflow: hidden;
 }
 
 .nav-item:hover {
@@ -64,14 +100,23 @@
     background: var(--sidebar-active);
 }
 
+/* Collapsed: center icon, hide label */
+.sidebar-collapsed .nav-item {
+    justify-content: center;
+    padding: 10px 0;
+}
+
+.nav-label { flex: 1; }
+
 .nav-indicator {
-    width: 6px;
-    height: 6px;
+    width: 5px;
+    height: 5px;
     background: var(--primary);
     border-radius: 50%;
     opacity: 0;
-    transform: translateX(-8px);
+    transform: translateX(-6px);
     transition: var(--transition);
+    flex-shrink: 0;
 }
 
 .nav-item.active .nav-indicator {
@@ -79,8 +124,12 @@
     transform: translateX(0);
 }
 
+.sidebar-collapsed .nav-indicator { display: none; }
+
+/* ── Footer ─────────────────────────────────────────────── */
+
 .sidebar-footer {
-    padding: 16px 16px 0;
+    padding: 12px 8px 0;
     border-top: 1px solid rgba(255, 255, 255, 0.08);
     margin-top: auto;
 }
@@ -89,20 +138,37 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding-bottom: 16px;
+    padding-bottom: 12px;
     position: relative;
+    gap: 6px;
+}
+
+.footer-collapsed {
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .server-status {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 0.8rem;
+    gap: 6px;
+    font-size: 0.75rem;
     color: #a1a1a6;
     background: rgba(255, 255, 255, 0.03);
-    padding: 6px 10px;
+    padding: 5px 8px;
     border-radius: 20px;
     border: 1px solid rgba(255, 255, 255, 0.05);
+    white-space: nowrap;
+}
+
+.status-dot-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    cursor: default;
 }
 
 .status-dot {
@@ -112,6 +178,7 @@
     border-radius: 50%;
     box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
     animation: pulse 2s infinite;
+    flex-shrink: 0;
 }
 
 .settings-container {
@@ -177,6 +244,20 @@
 .popover-item.active {
     color: white;
     background: var(--primary);
+}
+
+/* Collapsed sidebar: popover opens to the right */
+.popover-right {
+    right: auto;
+    left: calc(100% + 8px);
+    bottom: 0;
+    top: auto;
+    animation: slideRight 0.2s ease-out;
+}
+
+@keyframes slideRight {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: translateX(0); }
 }
 
 @keyframes slideUp {

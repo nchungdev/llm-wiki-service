@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import {
   LayoutDashboard,
   Activity,
@@ -8,7 +8,9 @@ import {
   Library,
   MessageSquareText,
   ShieldCheck,
-  Copy
+  History,
+  PanelLeftClose,
+  PanelLeftOpen,
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -20,18 +22,21 @@ function cn(...inputs: ClassValue[]) {
 interface SidebarProps {
   currentView: string;
   onViewChange: (view: string) => void;
+  collapsed: boolean;
+  onToggleCollapse: () => void;
 }
 
 const navItems = [
-  { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-  { id: 'research', label: 'Nghiên cứu tài liệu', icon: MessageSquareText },
-  { id: 'sync', label: 'Pipeline Board', icon: Activity },
-  { id: 'vault', label: 'Vault Health', icon: ShieldCheck },
-  { id: 'ebook', label: 'Nhập Ebook', icon: BookMarked },
+  { id: 'dashboard',        label: 'Dashboard',          icon: LayoutDashboard },
+  { id: 'research',         label: 'Nghiên cứu',         icon: MessageSquareText },
+  { id: 'sync',             label: 'Pipeline Board',     icon: Activity },
+  { id: 'pipeline-history', label: 'Nhật ký vận hành',  icon: History },
+  { id: 'vault',            label: 'Vault Health',       icon: ShieldCheck },
+  { id: 'ebook',            label: 'Nhập Ebook',         icon: BookMarked },
 ];
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) => {
-  const [showSettings, setShowSettings] = React.useState(false);
+export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, collapsed, onToggleCollapse }) => {
+  const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,75 +50,77 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) =
   }, []);
 
   return (
-    <aside className="sidebar">
+    <aside className={cn('sidebar', collapsed && 'sidebar-collapsed')}>
+      {/* Logo + collapse toggle */}
       <div className="sidebar-header">
         <div className="logo">
           <Library className="logo-icon" />
-          <span>AI Librarian</span>
+          {!collapsed && <span>AI Librarian</span>}
         </div>
+        <button
+          className="sidebar-collapse-btn"
+          onClick={onToggleCollapse}
+          title={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
+        >
+          {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
+        </button>
       </div>
-      
+
+      {/* Navigation */}
       <nav className="nav-menu">
         {navItems.map((item) => (
           <a
             key={item.id}
             href="#"
             className={cn('nav-item', currentView === item.id && 'active')}
+            title={collapsed ? item.label : undefined}
             onClick={(e) => {
               e.preventDefault();
               onViewChange(item.id);
             }}
           >
             <span className="nav-indicator" />
-            <item.icon size={20} />
-            {item.label}
+            <item.icon size={18} />
+            {!collapsed && <span className="nav-label">{item.label}</span>}
           </a>
         ))}
       </nav>
 
+      {/* Footer */}
       <div className="sidebar-footer">
-        <div className="footer-main">
-          <div className="server-status online">
-            <span className="status-dot" /> Server Online
-          </div>
-          
+        <div className={cn('footer-main', collapsed && 'footer-collapsed')}>
+          {!collapsed ? (
+            <div className="server-status online">
+              <span className="status-dot" /> Server Online
+            </div>
+          ) : (
+            <div className="status-dot-icon" title="Server Online">
+              <span className="status-dot" />
+            </div>
+          )}
+
           <div className="settings-container" ref={settingsRef}>
-            <button 
-              className={cn('settings-btn', (currentView === 'logs' || currentView === 'settings') && 'active')} 
+            <button
+              className={cn('settings-btn', (currentView === 'logs' || currentView === 'settings') && 'active')}
               onClick={() => setShowSettings(!showSettings)}
               title="Cài đặt hệ thống"
             >
-              <Settings size={18} />
+              <Settings size={16} />
             </button>
-            
+
             {showSettings && (
-              <div className="settings-popover">
-                <button 
+              <div className={cn('settings-popover', collapsed && 'popover-right')}>
+                <button
                   className={cn('popover-item', currentView === 'logs' && 'active')}
-                  onClick={() => {
-                    onViewChange('logs');
-                    setShowSettings(false);
-                  }}
+                  onClick={() => { onViewChange('logs'); setShowSettings(false); }}
                 >
-                  <Terminal size={16} /> Live Logs
+                  <Terminal size={15} /> Live Logs
                 </button>
-                <button 
+                <button
                   className={cn('popover-item', currentView === 'settings' && 'active')}
-                  onClick={() => {
-                    onViewChange('settings');
-                    setShowSettings(false);
-                  }}
+                  onClick={() => { onViewChange('settings'); setShowSettings(false); }}
                 >
-                  <Settings size={16} /> Cấu hình hệ thống
-                </button>
-                <button 
-                  className={cn('popover-item', currentView === 'vault' && 'active')}
-                  onClick={() => {
-                    onViewChange('vault');
-                    setShowSettings(false);
-                  }}
-                >
-                  <Copy size={16} /> Quét trùng lặp
+                  <Settings size={15} /> Cấu hình hệ thống
                 </button>
               </div>
             )}

@@ -92,10 +92,11 @@ body, html {
     z-index: 100;
 }
 
-.main-header h2 {
-    font-size: 1.25rem;
+.main-header h2,
+.view-title {
+    font-size: 1rem;
     font-weight: 600;
-    color: var(--text);
+    color: var(--text-primary);
     margin: 0;
 }
 
