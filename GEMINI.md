@@ -23,80 +23,48 @@ CSS được tách thành các file riêng biệt trong `admin/src/presentation/
 - `Sidebar.css` — sidebar + nav
 - `Dashboard.css` — dashboard widgets
 - `ManageSources.css` — source cards, filter bar
-- `SyncView.css` — pipeline Kanban, source tabs
+- `SyncView.css` — pipeline Kanban, collapsible source tabs
 - `DataManager.css` — raw file list, wiki pages
 - `Modals.css` — modal overlays, source modal
-- `ResearchView.css` — research chat UI, source panel, deep research mode
+- `ResearchView.css` — research chat UI, split-pane layout, deep research mode
 
 ---
 
 ## Development Workflow
 
 ### 1. Khởi động hệ thống
-- **Chế độ Tiêu chuẩn (Production):** `./run.sh`
-- **Chế độ Build lại UI:** `./run.sh --build`
+- **Chế độ Tiêu chuẩn (Production):** `./run.sh` (luôn tự động rebuild UI trước khi chạy).
 - **Chế độ Phát triển (Auto-Reload):** `./run.sh --dev`
   - Tự động reload Backend (Python) khi đổi code.
   - Tự động reload Frontend (React) qua Vite Dev Server.
 
 ### 2. Kiểm soát AI & Chi phí
-- Toàn bộ AI-processing (Crawl/Cook) đều phải được trigger **THỦ CÔNG** qua Admin UI trong giai đoạn phát triển.
+- Toàn bộ AI-processing (Crawl/Cook/RAG Indexing) mặc định ở chế độ **THỦ CÔNG**.
 - Hệ thống sử dụng **AsyncRateLimiter** để kiểm soát RPM/TPM.
 
 ### 3. Cấu hình & Bảo mật
-- **API Keys:** Ưu tiên lưu trong OS Keychain qua `keyring`. Hỗ trợ load từ `.env` (qua `python-dotenv`) hoặc biến môi trường.
-- **Config Files:** `config.json` và `default_sources.json` chứa thông tin nhạy cảm/cá nhân hóa nên được đặt trong thư mục **`dev/`** và được **ignore khỏi Git**.
-- **Templates:** Sử dụng thư mục `templates/` chứa `config.json.template` và `default_sources.json.template` để làm mẫu. Hệ thống tự động khởi tạo file thực từ template nếu thiếu.
+- **API Keys:** Hỗ trợ load từ `.env` (qua `python-dotenv`) hoặc biến môi trường. `GEMINI_API_KEY` cũng được hỗ trợ qua OS Keychain (`keyring`).
 - **GCP Key:** File Service Account JSON được import qua UI và lưu tại `SYSTEM_DIR/gcp_key.json`.
-- **Tavily API Key:** Dùng cho Deep Research web search. Lưu qua `keyring` hoặc `TAVILY_API_KEY` env var. Không persist vào `config.json`.
+- **Tavily API Key:** Cần thiết cho tính năng Deep Research (Web Search). Lưu trong `.env` dưới biến `TAVILY_API_KEY`.
 - **Lazy Loading:** Chỉ nạp credentials khi Provider tương ứng được kích hoạt.
 
 ### 4. Auto-Start Pipeline
-- `pipeline.auto_start` trong `config.json` mặc định là `false`.
-- Khi `false`: RAG reindex, watcher, và inbox watcher **không** chạy lúc startup — tiết kiệm tài nguyên và tránh đốt AI credit không cần thiết.
-- Khi `true`: Tất cả worker AI (reindex, watch_raw, watch_inbox) khởi động ngay khi server lên.
-- Trigger thủ công vẫn hoạt động bình thường bất kể `auto_start`.
+- `pipeline.auto_start` mặc định là `false`. RAG reindex, watcher, và inbox watcher **không** chạy lúc startup để tránh đốt credit AI ngoài ý muốn.
+- Cung cấp nút **Database (Re-index RAG)** thủ công ngay trên giao diện SyncView.
 
 ---
 
 ## Storage Architecture
 
-Hai thư mục lưu trữ độc lập với mục đích rõ ràng:
-
 | Biến | Mặc định (macOS) | Mục đích |
 |---|---|---|
 | `VAULT_DIR` | `~/iCloud/Obsidian/My Brain` | Wiki `.md` output — iCloud-safe, sync Obsidian |
-| `SYSTEM_DIR` | `~/Library/Application Support/LLMWiki` | Local-only: `chroma_db/`, `raw/`, `screenshots/` |
+| `SYSTEM_DIR` | `~/Library/Application Support/LLMWiki` | Local-only: `chroma_db/`, `raw/`, cache, logs |
 
-- `VAULT_DIR` = `WIKI_DIR` — AI-processed notes đi thẳng vào Obsidian vault
-- `SYSTEM_DIR` chứa ChromaDB và raw crawl data — **không được** để trong iCloud (SQLite không sync an toàn)
-
-## Security: Credential Storage
-
-| Credential | Nơi lưu | API exposure |
-|---|---|---|
-| Gemini API Key | OS Keychain (`keyring`) | Không bao giờ trả về qua API |
-| GCP Service Account Key | `SYSTEM_DIR/gcp_key.json` | Chỉ trả về status (project_id, client_email) |
-| Tavily API Key | OS Keychain / env `TAVILY_API_KEY` | Không bao giờ trả về qua API |
-| Config thông thường | `config.json` | Được trả về qua `/api/setup/info` |
-
-- GCP key được **import qua UI** (file picker → đọc client-side → POST nội dung JSON) thay vì nhập đường dẫn file
-- Endpoint `POST /api/config/gcp-key` validate và lưu key vào `SYSTEM_DIR/gcp_key.json`
-- Endpoint `GET /api/config/gcp-key/status` trả về `{configured, project_id, client_email}`
-
----
-
-## Background Workers & Reliability
-
-| Worker | Chu kỳ | Chức năng |
-|---|---|---|
-| `RunDailyCrawlUseCase` | 24h | Extract từ RSS/Web/YouTube/Wikipedia → raw JSON |
-| `RunCookUseCase` | 5 phút | Transform raw JSON → Wiki `.md` qua AI |
-| `RunHourlyResearchUseCase` | 1h | Research pulse (mở rộng tương lai) |
-
-**Emergency Stop:** Tất cả worker có cờ `paused`. Endpoint `POST /api/emergency-stop` dừng ngay, `POST /api/emergency-resume` tiếp tục. UI có nút Stop/Resume AI ở header.
-
-**Network guard:** Mỗi chu kỳ kiểm tra kết nối bằng `socket.getaddrinfo("dns.google", 443)` trước khi gọi AI/crawl — tránh đốt retry khi offline.
+### Metadata Caching & Performance
+- `FileWikiRepository` sử dụng cơ chế **Metadata Caching** trong bộ nhớ.
+- Chỉ đọc **1KB đầu tiên** của file `.md` để parse Frontmatter.
+- Tự động cập nhật cache dựa trên `mtime` của file, đảm bảo dashboard load tức thì với hàng nghìn tài liệu.
 
 ---
 
@@ -112,91 +80,48 @@ VAULT_DIR/10-Knowledge/{category}/{date}/*.md   ← Obsidian vault
 SYSTEM_DIR/chroma_db/   ← vector index (local only)
 ```
 
-**Inbox watcher:** Drop `.md` file vào `raw/inbox/` hoặc `VAULT_DIR/Clippings/` → tự động cook và xóa file gốc.
-
 ---
 
 ## Pipeline UI Architecture (SyncView)
 
-Toàn bộ quá trình xử lý dữ liệu được trực quan hóa trên một Kanban board duy nhất (`SyncView`):
+### Source Tab Bar (Collapsible)
+- **"Tất cả"** button ghim cố định bên trái, ngăn cách bằng divider dọc.
+- **Khu vực Tabs:** Mặc định hiện 1 dòng, có nút **Chevron (Expand/Collapse)** để mở rộng thành nhiều dòng khi có hàng trăm nguồn.
+- **Action Icons:** (Reindex RAG, Add source) cố định bên phải.
+- **Trạng thái:** Nguồn bị tắt (Inactive) hiển thị mờ kèm nhãn `(Off)`.
 
-### Source Tab Bar (Horizontal)
-- **"Tất cả"** button cố định bên trái, ngăn cách bằng divider dọc.
-- Mỗi nguồn là một tab pill riêng — click để lọc toàn bộ Kanban theo nguồn đó.
-- Tab bar cuộn ngang (`overflow-x: auto`, scrollbar ẩn) — không dùng expand/collapse.
-- Các action icon (Reindex, Add source) cố định bên phải.
-- Drag-and-drop: kéo tab nguồn vào cột Extraction để trigger crawl thủ công.
-
-### 5-Column Kanban Pipeline
+### 4-Column Kanban Pipeline (Simplified)
 | Cột | Nội dung |
 |---|---|
-| `Extraction` | Drop zone — kéo nguồn vào để trigger crawl ngay |
-| `Raw Inbox` | File JSON thô vừa crawl về (chưa xử lý) |
+| `Raw Inbox` | File JSON thô vừa crawl về (hiển thị card `EXTRACTING` kèm progress bar khi đang crawl) |
 | `Cooking` | Đang xử lý bởi AI (hiển thị progress bar) |
 | `Done` | Đã xử lý xong → link mở Obsidian trực tiếp |
-| `Skipped / Error` | Bị lọc (rác) hoặc lỗi AI — có thể retry |
+| `Skipped / Error` | Bị lọc (rác) hoặc lỗi AI |
+
+---
+
+## Research View (Deep Research Agent)
+
+Giao diện nghiên cứu phong cách Gemini Researcher / NotebookLM với cơ chế **Keep-Alive** (giữ trạng thái khi chuyển tab).
+
+### Research Modes
+- **Wiki Vault (Local):** Chat và trích dẫn [1], [2] từ kho tri thức cá nhân (RAG).
+- **Deep Web (Agentic):** Agent tự động thực hiện workflow: **Planner -> Search (Tavily) -> Scrape (Deep Crawler) -> Synthesize**.
+
+### Tính năng cốt lõi
+- **Split-pane Layout:** Chat bên trái, Tài liệu tham khảo (Sources) bên phải. Click trích dẫn để highlight nguồn.
+- **Thinking Process:** Hiển thị từng bước tư duy của Agent (Đang phân tích, Đang search, Đang đọc...).
+- **Persistence:** 
+    *   **Lưu vào Wiki:** Nút lưu báo cáo nghiên cứu trực tiếp vào Obsidian vault.
+    *   **Lịch sử (History):** Tự động lưu và cho phép tải lại các phiên nghiên cứu cũ từ `research_history.json`.
 
 ---
 
 ## AI Provider Support
 
-| Provider | Cấu hình cần thiết |
-|---|---|
-| `ollama` | Ollama chạy local tại `localhost:11434` |
-| `gemini` | Gemini API Key (lưu trong OS Keychain) |
-| `vertexai` | GCP Service Account Key (`SYSTEM_DIR/gcp_key.json`) + GCP Location |
+Hỗ trợ đa client đồng thời với cơ chế **Smart Fallback** và **Dynamic Model Discovery**:
+- **Vertex AI:** Tự động trích xuất model ID ngắn, fallback sang `gemini-1.5-flash` nếu gặp lỗi 404/Region không hỗ trợ.
+- **Gemini Studio:** Dùng API Key cá nhân.
+- **Ollama:** Dùng cho xử lý Local tiết kiệm chi phí.
 
-Settings UI hiển thị trạng thái sẵn sàng của từng provider và tải danh sách model thực tế từ API.
-
-### ⚠️ Vertex AI — Model ID Format (Critical)
-
-Vertex AI SDK **yêu cầu full resource path** làm model ID:
-
-```
-publishers/google/models/gemini-2.5-flash   ✅ Works
-gemini-2.5-flash                            ❌ 404 NOT_FOUND
-gemini-2.0-flash-001                        ❌ 404 NOT_FOUND (cả short và full path)
-```
-
-- SDK tự ghép `projects/{id}/locations/{loc}/` vào trước — nếu dùng short name thì resolve sai.
-- Model listing trả về `m.name = "publishers/google/models/..."` — giữ nguyên làm `id`.
-- **Confirmed working (project glimpse-49839):** `gemini-2.5-flash`, `gemini-2.5-pro`
-- Default model: `publishers/google/models/gemini-2.5-flash`
-- Fallback (khi API listing thất bại): `gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-2.0-flash-001`
-
-### Settings UI — AI Provider Fields
-- Dropdown provider hiển thị trạng thái real-time: `(Sẵn sàng)` / `(Chưa cấu hình)` / `(Offline)`
-- Model dropdown tải từ API khi đổi provider, tự chọn model đầu tiên nếu model hiện tại không có trong list.
-- Cảnh báo fallback (`is_fallback = true`) hiển thị khi provider chính không khả dụng.
-
----
-
-## Research View (Chat + Deep Research)
-
-Module nghiên cứu kết hợp RAG local và web search với giao diện Omnibox cao cấp.
-
-### Bốn chế độ hoạt động (Research Modes)
-| Chế độ | Mô tả | Tính năng chính |
-|---|---|---|
-| **Tìm nhanh** | Hybrid search (Wiki + Web) | Trả lời nhanh, có trích dẫn nguồn [1], [2]... |
-| **Deep Research** | Nghiên cứu sâu đa bước | Planning -> Search -> Scrape -> Synthesize |
-| **Extract URL** | Trích xuất tri thức trực tiếp | URL -> Markdown -> Wiki Library |
-| **Smart Crawl** | Thu thập domain tự động | Thêm domain vào pipeline crawl định kỳ |
-
-### Quy trình Deep Research 2 bước (Agentic Workflow)
-Hệ thống sử dụng mô hình "Human-in-the-loop" để tối ưu chi phí và độ chính xác:
-1. **Giai đoạn Lập kế hoạch (Planning)**: AI phân tích prompt và đề xuất danh sách các câu lệnh tìm kiếm và mục tiêu nghiên cứu.
-2. **Giai đoạn Thực thi (Execution)**: Người dùng duyệt kế hoạch, AI tiến hành "lùng sục" Internet và tổng hợp báo cáo chuyên sâu.
-
-### Giao diện Omnibox & Dynamic UI
-- **Smart Input**: Ô nhập liệu phong cách Gemini với bộ chọn AI Provider (Ollama, Gemini, Vertex AI) và Model ngay tại chỗ.
-- **Source Filtering**: Cho phép giới hạn không gian tìm kiếm: `Tất cả`, `Chỉ Wiki`, hoặc `Chỉ Web`.
-- **Dynamic Layout**: 
-  - Bình thường: Chat bên trái, Lịch sử nghiên cứu bên phải.
-  - Khi nghiên cứu: Tự động ẩn Lịch sử, hiển thị **Progress Panel** với skeleton loading và tiến trình tư duy chi tiết.
-- **Tabbed Sidebar**: Chuyển đổi linh hoạt giữa Lịch sử nghiên cứu và Danh sách nguồn trích dẫn.
-
-### Infrastructure mới
-- `WebSearchProvider`: Tavily API client hỗ trợ tìm kiếm đa luồng.
-- `DeepResearchUseCase`: Orchestrate quy trình lập kế hoạch và thực thi nghiên cứu.
-- `AdminApi`: Mở rộng hỗ trợ cấu hình AI động cho từng yêu cầu.
+Hệ thống sẽ tự động thử qua các provider khả dụng nếu provider chính bị lỗi kết nối hoặc không tìm thấy model.
