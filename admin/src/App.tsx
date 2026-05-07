@@ -62,10 +62,11 @@ function App() {
 
   const renderView = (viewId: string, Component: React.ComponentType) => {
     if (!visitedViews.has(viewId)) return null;
+    const active = currentView === viewId;
     return (
       <div
         key={viewId}
-        style={{ display: currentView === viewId ? 'block' : 'none', height: '100%' }}
+        style={{ display: active ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}
       >
         <Component />
       </div>
@@ -116,7 +117,7 @@ function App() {
           </div>
         </header>
 
-        <div className="content-viewport" style={{ display: 'flex', flexDirection: 'column' }}>
+        <div className="content-viewport">
           {renderView('dashboard', DashboardView)}
           {renderView('research', ResearchView)}
           {renderView('sources', ManageSourcesView)}

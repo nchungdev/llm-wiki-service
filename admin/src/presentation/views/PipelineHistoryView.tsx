@@ -35,13 +35,10 @@ export const PipelineHistoryView: React.FC = () => {
   }, [fetchHistory]);
 
   return (
-    <div className="view-panel active" style={{ padding: '20px', overflowY: 'auto', height: '100%', boxSizing: 'border-box' }}>
+    <div className="view-panel active" style={{ padding: '16px 24px', overflowY: 'auto', flex: 1, minHeight: 0, boxSizing: 'border-box' }}>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-        <div>
-          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>Nhật ký vận hành</h3>
-          <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{history.length} lần chạy gần nhất</span>
-        </div>
+        <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{history.length} lần chạy gần nhất</span>
         <button className="icon-button" onClick={fetchHistory} title="Làm mới">
           <RefreshCw size={14} />
         </button>

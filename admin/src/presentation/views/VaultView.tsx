@@ -206,12 +206,9 @@ export const VaultView: React.FC = () => {
 
   return (
     <div className="view-panel active vault-view">
-      {/* Header */}
-      <div className="vault-header">
-        <div className="vault-header-left">
-          <h3 className="vault-title">Vault Health</h3>
-          {lastScan && <span className="vault-subtitle">Scanned at {lastScan}</span>}
-        </div>
+      {/* Inline toolbar: scan time + refresh — title comes from sidebar header */}
+      <div className="vault-toolbar">
+        {lastScan && <span className="vault-subtitle">Quét lúc {lastScan}</span>}
         <button className="icon-button" onClick={runAudit} disabled={loading} title="Re-scan">
           <RefreshCw size={14} className={loading ? 'spin' : ''} />
         </button>

@@ -31,18 +31,36 @@ export const ResearchView: React.FC = () => {
   const [model, setModel] = useState('');
   const [models, setModels] = useState<{id: string, label: string}[]>([]);
   const [searchIn, setSearchIn] = useState<'all' | 'wiki' | 'web'>('all');
+  const [aiStatus, setAiStatus] = useState<Record<string, {available: boolean, message: string}>>({});
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetchAIStatus();
+  }, []);
+
+  const fetchAIStatus = async () => {
+    try {
+      const res = await AdminApi.getAIAvailability();
+      setAiStatus(res.data);
+    } catch (e) {
+      console.error('Failed to fetch AI status', e);
+    }
+  };
 
   useEffect(() => {
     fetchModels();
   }, [provider]);
 
   const fetchModels = async () => {
+    setModels([]); // Clear while loading
     try {
       const res = await AdminApi.getAvailableModels(provider);
-      setModels(res.data.models);
-      if (res.data.models.length > 0) setModel(res.data.models[0].id);
+      const fetchedModels = res.data.models;
+      setModels(fetchedModels);
+      if (fetchedModels.length > 0) {
+        setModel(fetchedModels[0].id);
+      }
     } catch (e) {
       console.error('Failed to fetch models', e);
     }
@@ -315,18 +333,22 @@ export const ResearchView: React.FC = () => {
                     <div className="selectors-group">
                     <div className="selector-btn">
                         <Cpu size={14} />
-                        <select value={provider} onChange={e => setProvider(e.target.value)} style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', fontWeight: 600, outline: 'none', cursor: 'pointer' }}>
-                        <option value="gemini">Gemini</option>
-                        <option value="vertexai">Vertex AI</option>
-                        <option value="ollama">Ollama</option>
+                        <select value={provider} onChange={e => setProvider(e.target.value)}>
+                        <option value="gemini">Gemini {aiStatus.gemini?.available ? '✅' : '❌'}</option>
+                        <option value="vertexai">Vertex AI {aiStatus.vertexai?.available ? '✅' : '❌'}</option>
+                        <option value="ollama">Ollama {aiStatus.ollama?.available ? '✅' : '❌'}</option>
                         </select>
                         <ChevronDown size={12} />
                     </div>
 
                     <div className="selector-btn">
                         <Layout size={14} />
-                        <select value={model} onChange={e => setModel(e.target.value)} style={{ border: 'none', background: 'transparent', fontSize: '0.75rem', fontWeight: 600, outline: 'none', cursor: 'pointer', maxWidth: '100px' }}>
-                        {models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
+                        <select value={model} onChange={e => setModel(e.target.value)} style={{ maxWidth: '120px' }}>
+                        {models.length > 0 ? (
+                            models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                        ) : (
+                            <option value="">Đang tải...</option>
+                        )}
                         </select>
                         <ChevronDown size={12} />
                     </div>
