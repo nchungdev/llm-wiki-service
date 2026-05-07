@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import {
   RefreshCw, AlertTriangle, Trash2, FolderInput, RefreshCcw,
-  Star, Clock, Unlink, Link2Off, BarChart2, CheckCircle2, Loader2, ChevronDown, ChevronUp, Copy
+  Star, Clock, Unlink, Link2Off, BarChart2, CheckCircle2,
+  Loader2, ChevronDown, ChevronUp, FileText, TrendingUp, ShieldAlert
 } from 'lucide-react';
 import { AdminApi } from '../../infrastructure/api/AdminApi';
 import '../styles/VaultView.css';
@@ -16,40 +17,117 @@ interface AuditReport {
 }
 type ActionState = 'idle' | 'running' | 'done' | 'error';
 
-// ── Issue panel ────────────────────────────────────────────
-const IssuePanel: React.FC<{
-  title: string; icon: React.ReactNode; count: number; color: string;
-  items: AuditIssue[]; children?: React.ReactNode;
-}> = ({ title, icon, count, color, items, children }) => {
-  const [open, setOpen] = useState(false);
+// ── Score color helper ─────────────────────────────────────
+const SCORE_COLORS: Record<string, string> = {
+  '1': '#ef4444', '2': '#ef4444', '3': '#f97316',
+  '4': '#f59e0b', '5': '#f59e0b',
+  '6': '#84cc16', '7': '#84cc16',
+  '8': '#10b981', '9': '#10b981', '10': '#10b981',
+};
+
+// ── Stat Card ──────────────────────────────────────────────
+const StatCard: React.FC<{
+  icon: React.ReactNode; value: string | number; label: string; color?: string; sub?: string;
+}> = ({ icon, value, label, color = 'var(--primary)', sub }) => (
+  <div className="vault-stat-card">
+    <div className="vault-stat-icon" style={{ background: color + '18', color }}>{icon}</div>
+    <div className="vault-stat-body">
+      <div className="vault-stat-value">{value}</div>
+      <div className="vault-stat-label">{label}</div>
+      {sub && <div className="vault-stat-sub">{sub}</div>}
+    </div>
+  </div>
+);
+
+// ── Score bar ──────────────────────────────────────────────
+const ScoreBar: React.FC<{ dist: Record<string, number>; total: number }> = ({ dist }) => {
+  const scored = Object.values(dist).reduce((a, b) => a + b, 0);
+  const avgScore = scored > 0
+    ? Object.entries(dist).reduce((sum, [sc, cnt]) => sum + +sc * cnt, 0) / scored
+    : 0;
+
   return (
-    <div className="issue-panel">
-      <div className="issue-panel-header" onClick={() => count > 0 && setOpen(o => !o)}>
-        <div className="issue-panel-left">
-          <span className="issue-icon" style={{ color }}>{icon}</span>
-          <span className="issue-title">{title}</span>
-          <span className="issue-count" style={{ background: count > 0 ? color + '22' : undefined, color: count > 0 ? color : undefined }}>
-            {count}
-          </span>
-        </div>
-        <div className="issue-panel-right">
-          {children}
-          {count > 0 && (open ? <ChevronUp size={14} /> : <ChevronDown size={14} />)}
+    <div className="score-section">
+      <div className="score-bar-track">
+        {Object.entries(dist).sort((a, b) => +a[0] - +b[0]).map(([sc, cnt]) => (
+          cnt > 0 ? (
+            <div
+              key={sc}
+              className="score-bar-seg"
+              style={{ flex: cnt, background: SCORE_COLORS[sc] || '#94a3b8' }}
+              title={`Score ${sc}: ${cnt} notes`}
+            />
+          ) : null
+        ))}
+      </div>
+      <div className="score-bar-legend">
+        {[1,2,3,4,5,6,7,8,9,10].map(sc => (
+          <div key={sc} className={`score-legend-item ${(dist[sc] || 0) === 0 ? 'empty' : ''}`}>
+            <div className="score-legend-dot" style={{ background: SCORE_COLORS[sc] }} />
+            <span className="score-legend-sc">{sc}</span>
+            <span className="score-legend-cnt">{dist[sc] || 0}</span>
+          </div>
+        ))}
+        <div className="score-avg-badge" style={{ color: SCORE_COLORS[String(Math.round(avgScore))] || '#94a3b8' }}>
+          avg {avgScore.toFixed(1)}
         </div>
       </div>
-      {open && count > 0 && (
-        <div className="issue-list">
+    </div>
+  );
+};
+
+// ── Issue panel ────────────────────────────────────────────
+const IssuePanel: React.FC<{
+  title: string; icon: React.ReactNode; count: number; accentColor: string;
+  items: AuditIssue[]; action?: React.ReactNode;
+}> = ({ title, icon, count, accentColor, items, action }) => {
+  const [open, setOpen] = useState(false);
+  const hasItems = count > 0;
+
+  return (
+    <div className={`issue-row ${hasItems ? 'has-issues' : 'clean'}`}>
+      <div className="issue-row-accent" style={{ background: hasItems ? accentColor : 'transparent' }} />
+      <div
+        className="issue-row-main"
+        onClick={() => hasItems && setOpen(o => !o)}
+        style={{ cursor: hasItems ? 'pointer' : 'default' }}
+      >
+        <div className="issue-row-left">
+          <span className="issue-row-icon" style={{ color: hasItems ? accentColor : 'var(--text-tertiary)' }}>
+            {icon}
+          </span>
+          <span className={`issue-row-title ${!hasItems ? 'muted' : ''}`}>{title}</span>
+        </div>
+        <div className="issue-row-right">
+          {action && hasItems && <span onClick={e => e.stopPropagation()}>{action}</span>}
+          <span className="issue-row-badge" style={{
+            background: hasItems ? accentColor + '18' : 'var(--border)',
+            color: hasItems ? accentColor : 'var(--text-tertiary)',
+          }}>
+            {count}
+          </span>
+          {hasItems && (
+            <span className="issue-row-chevron" style={{ color: 'var(--text-tertiary)' }}>
+              {open ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+            </span>
+          )}
+          {!hasItems && <CheckCircle2 size={13} color="var(--text-tertiary)" />}
+        </div>
+      </div>
+
+      {open && hasItems && (
+        <div className="issue-expand">
           {items.slice(0, 30).map((item, i) => (
-            <div key={i} className="issue-item">
-              <span className="issue-item-path">{item.path}</span>
-              {item.score !== undefined && <span className="issue-item-badge">score: {item.score}</span>}
-              {item.expires && <span className="issue-item-badge warn">exp: {item.expires}</span>}
-              {item.broken && item.broken.map(b => (
-                <span key={b} className="issue-item-badge error">⚠ {b}</span>
-              ))}
+            <div key={i} className="issue-expand-item">
+              <span className="issue-expand-path">{item.path}</span>
+              <div className="issue-expand-badges">
+                {item.score !== undefined && <span className="badge">score: {item.score}</span>}
+                {item.expires && <span className="badge warn">exp: {item.expires}</span>}
+                {item.broken?.map(b => <span key={b} className="badge error">⚠ {b}</span>)}
+              </div>
             </div>
           ))}
-          {items.length > 30 && <div className="issue-more">+{items.length - 30} more…</div>}
+          {items.length > 30 && <div className="issue-expand-more">+{items.length - 30} more…</div>}
         </div>
       )}
     </div>
@@ -61,55 +139,24 @@ const ActionBtn: React.FC<{
   label: string; state: ActionState; result?: any; onClick: () => void; danger?: boolean;
 }> = ({ label, state, result, onClick, danger }) => (
   <button
-    className={`action-btn ${danger ? 'danger' : ''} ${state}`}
+    className={`v-action-btn ${danger ? 'danger' : ''} ${state}`}
     onClick={onClick}
     disabled={state === 'running'}
   >
-    {state === 'running' && <Loader2 size={13} className="spin" />}
-    {state === 'done' && <CheckCircle2 size={13} />}
+    {state === 'running' && <Loader2 size={12} className="spin" />}
+    {state === 'done' && <CheckCircle2 size={12} />}
     {state === 'idle' && label}
-    {state === 'running' && 'Đang chạy...'}
-    {state === 'done' && (result?.count !== undefined ? `${result.count} xong` : 'Xong')}
-    {state === 'error' && 'Lỗi'}
+    {state === 'running' && 'Running…'}
+    {state === 'done' && (result?.count !== undefined ? `${result.count} done` : 'Done')}
+    {state === 'error' && 'Error'}
   </button>
 );
-
-// ── Score bar ──────────────────────────────────────────────
-const ScoreBar: React.FC<{ dist: Record<string, number> }> = ({ dist }) => {
-  const COLORS: Record<string, string> = {
-    '1': '#ef4444', '2': '#ef4444', '3': '#f97316',
-    '4': '#f59e0b', '5': '#f59e0b',
-    '6': '#84cc16', '7': '#84cc16',
-    '8': '#10b981', '9': '#10b981', '10': '#10b981',
-  };
-  const scored = Object.values(dist).reduce((a, b) => a + b, 0);
-  return (
-    <div className="score-bar-wrap">
-      <div className="score-bar">
-        {Object.entries(dist).sort((a, b) => +a[0] - +b[0]).map(([sc, cnt]) => (
-          <div
-            key={sc}
-            className="score-bar-seg"
-            style={{ width: `${(cnt / (scored || 1)) * 100}%`, background: COLORS[sc] || '#94a3b8' }}
-            title={`Score ${sc}: ${cnt} notes`}
-          />
-        ))}
-      </div>
-      <div className="score-bar-labels">
-        {[1,2,3,4,5,6,7,8,9,10].map(sc => (
-          <span key={sc} style={{ color: COLORS[sc] }}>
-            {sc}: {dist[sc] || 0}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-};
 
 // ── Main view ──────────────────────────────────────────────
 export const VaultView: React.FC = () => {
   const [report, setReport] = useState<AuditReport | null>(null);
   const [loading, setLoading] = useState(false);
+  const [lastScan, setLastScan] = useState<string>('');
   const [actions, setActions] = useState<Record<string, ActionState>>({});
   const [results, setResults] = useState<Record<string, any>>({});
 
@@ -118,6 +165,7 @@ export const VaultView: React.FC = () => {
     try {
       const res = await AdminApi.vaultAudit();
       setReport(res.data);
+      setLastScan(new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }));
     } catch (e) {
       console.error(e);
     } finally {
@@ -136,100 +184,151 @@ export const VaultView: React.FC = () => {
       setTimeout(() => {
         setActions(a => ({ ...a, [key]: 'idle' }));
         runAudit();
-      }, 3000);
+      }, 2500);
     } catch (e) {
       setActions(a => ({ ...a, [key]: 'error' }));
     }
   };
 
-  const issues = report?.issues;
   const counts = report?.counts || {};
+  const issues = report?.issues;
+
+  // Compute health score
+  const totalIssues = Object.values(counts).reduce((a, b) => a + b, 0);
+  const criticalIssues = (counts.no_score || 0) + (counts.low_score || 0) + (counts.broken_links || 0);
+  const healthPct = report
+    ? Math.max(0, Math.round(100 - (totalIssues / Math.max(report.total, 1)) * 100))
+    : null;
+  const healthColor = healthPct == null ? '#94a3b8'
+    : healthPct >= 80 ? '#10b981'
+    : healthPct >= 60 ? '#f59e0b'
+    : '#ef4444';
 
   return (
     <div className="view-panel active vault-view">
       {/* Header */}
       <div className="vault-header">
-        <div>
+        <div className="vault-header-left">
           <h3 className="vault-title">Vault Health</h3>
-          {report && <span className="vault-subtitle">{report.total} notes scanned</span>}
+          {lastScan && <span className="vault-subtitle">Scanned at {lastScan}</span>}
         </div>
-        <button className="icon-button" onClick={runAudit} disabled={loading} title="Chạy lại audit">
-          <RefreshCw size={15} className={loading ? 'spin' : ''} />
+        <button className="icon-button" onClick={runAudit} disabled={loading} title="Re-scan">
+          <RefreshCw size={14} className={loading ? 'spin' : ''} />
         </button>
       </div>
 
       {loading && !report && (
-        <div className="vault-loading"><Loader2 size={24} className="spin" /> Đang quét vault...</div>
+        <div className="vault-loading">
+          <Loader2 size={22} className="spin" />
+          <span>Scanning vault…</span>
+        </div>
       )}
 
       {report && (
         <div className="vault-body">
-          {/* Score distribution */}
-          <div className="vault-section">
-            <div className="section-label"><BarChart2 size={14} /> Phân bổ Score</div>
-            <ScoreBar dist={report.score_distribution} />
+
+          {/* Stat Cards */}
+          <div className="vault-stats-row">
+            <StatCard icon={<FileText size={16} />} value={report.total} label="Total Notes" color="#6366f1" />
+            <StatCard
+              icon={<TrendingUp size={16} />}
+              value={`${healthPct}%`}
+              label="Health Score"
+              color={healthColor}
+              sub={totalIssues > 0 ? `${totalIssues} issues found` : 'No issues'}
+            />
+            <StatCard
+              icon={<ShieldAlert size={16} />}
+              value={criticalIssues}
+              label="Critical Issues"
+              color={criticalIssues > 0 ? '#ef4444' : '#10b981'}
+            />
           </div>
 
-          {/* Issue panels */}
-          <div className="vault-section">
-            <div className="section-label"><AlertTriangle size={14} /> Vấn đề phát hiện</div>
-            <div className="issue-panels">
-
-              <IssuePanel title="Không có score" icon={<Star size={14}/>} color="#f59e0b"
-                count={counts.no_score || 0} items={issues?.no_score || []}>
-                <ActionBtn label="Re-score AI" state={actions.rescore || 'idle'}
-                  result={results.rescore}
-                  onClick={() => runAction('rescore', 'rescore')} />
-              </IssuePanel>
-
-              <IssuePanel title="Score thấp (≤3) trong Feed" icon={<Trash2 size={14}/>} color="#ef4444"
-                count={counts.low_score || 0} items={issues?.low_score || []}>
-                <ActionBtn label="Xóa tất cả" state={actions.low_score || 'idle'}
-                  result={results.low_score} danger
-                  onClick={() => runAction('low_score', 'delete_low_score', { threshold: 3 })} />
-              </IssuePanel>
-
-              <IssuePanel title="Hết hạn (expires)" icon={<Clock size={14}/>} color="#f97316"
-                count={counts.expired || 0} items={issues?.expired || []}>
-                <ActionBtn label="Xóa expired" state={actions.expired || 'idle'}
-                  result={results.expired} danger
-                  onClick={() => runAction('expired', 'delete_expired')} />
-              </IssuePanel>
-
-              <IssuePanel title="Cấu trúc cũ (ngoài Feed/Knowledge)" icon={<FolderInput size={14}/>} color="#8b5cf6"
-                count={counts.old_structure || 0} items={issues?.old_structure || []}>
-                <ActionBtn label="Migrate → Knowledge/" state={actions.migrate || 'idle'}
-                  result={results.migrate}
-                  onClick={() => runAction('migrate', 'migrate_old')} />
-              </IssuePanel>
-
-              <IssuePanel title="Orphan (không có wikilink)" icon={<Unlink size={14}/>} color="#64748b"
-                count={counts.orphans || 0} items={issues?.orphans || []} />
-
-              <IssuePanel title="Wikilink bị hỏng" icon={<Link2Off size={14}/>} color="#dc2626"
-                count={counts.broken_links || 0} items={issues?.broken_links || []} />
-
-              <IssuePanel title="Trùng lặp (Tiêu đề)" icon={<Copy size={14}/>} color="#6366f1"
-                count={counts.duplicates || 0} items={issues?.duplicates || []}>
-                <ActionBtn label="Xóa trùng lặp" state={actions.duplicates || 'idle'}
-                  result={results.duplicates} danger
-                  onClick={() => runAction('duplicates', 'delete_duplicates')} />
-              </IssuePanel>
-
+          {/* Score Distribution */}
+          <div className="vault-card">
+            <div className="vault-card-header">
+              <BarChart2 size={13} />
+              <span>Score Distribution</span>
+            </div>
+            <div className="vault-card-body">
+              <ScoreBar dist={report.score_distribution} total={report.total} />
             </div>
           </div>
 
-          {/* MOC rebuild */}
-          <div className="vault-section">
-            <div className="section-label"><RefreshCcw size={14} /> Bảo trì</div>
-            <div className="maintenance-row">
-              <div className="maintenance-item">
-                <span>Rebuild Series MOC</span>
-                <span className="maint-desc">Tái tạo các file Atlas/Series/ từ frontmatter hiện có</span>
+          {/* Issues */}
+          <div className="vault-card">
+            <div className="vault-card-header">
+              <AlertTriangle size={13} />
+              <span>Issues Detected</span>
+              {totalIssues === 0 && (
+                <span className="vault-all-clear">All clear ✓</span>
+              )}
+            </div>
+            <div className="issue-list-wrap">
+              <IssuePanel
+                title="No score" icon={<Star size={14} />} accentColor="#f59e0b"
+                count={counts.no_score || 0} items={issues?.no_score || []}
+                action={
+                  <ActionBtn label="Re-score AI" state={actions.rescore || 'idle'}
+                    result={results.rescore}
+                    onClick={() => runAction('rescore', 'rescore')} />
+                }
+              />
+              <IssuePanel
+                title="Low score ≤3 in Feed" icon={<Trash2 size={14} />} accentColor="#ef4444"
+                count={counts.low_score || 0} items={issues?.low_score || []}
+                action={
+                  <ActionBtn label="Delete all" state={actions.low_score || 'idle'}
+                    result={results.low_score} danger
+                    onClick={() => runAction('low_score', 'delete_low_score', { threshold: 3 })} />
+                }
+              />
+              <IssuePanel
+                title="Expired notes" icon={<Clock size={14} />} accentColor="#f97316"
+                count={counts.expired || 0} items={issues?.expired || []}
+                action={
+                  <ActionBtn label="Delete expired" state={actions.expired || 'idle'}
+                    result={results.expired} danger
+                    onClick={() => runAction('expired', 'delete_expired')} />
+                }
+              />
+              <IssuePanel
+                title="Old structure (outside Feed/Knowledge)" icon={<FolderInput size={14} />} accentColor="#8b5cf6"
+                count={counts.old_structure || 0} items={issues?.old_structure || []}
+                action={
+                  <ActionBtn label="Migrate → Knowledge/" state={actions.migrate || 'idle'}
+                    result={results.migrate}
+                    onClick={() => runAction('migrate', 'migrate_old')} />
+                }
+              />
+              <IssuePanel
+                title="Orphan (no wikilink)" icon={<Unlink size={14} />} accentColor="#64748b"
+                count={counts.orphans || 0} items={issues?.orphans || []}
+              />
+              <IssuePanel
+                title="Broken wikilinks" icon={<Link2Off size={14} />} accentColor="#dc2626"
+                count={counts.broken_links || 0} items={issues?.broken_links || []}
+              />
+            </div>
+          </div>
+
+          {/* Maintenance */}
+          <div className="vault-card">
+            <div className="vault-card-header">
+              <RefreshCcw size={13} />
+              <span>Maintenance</span>
+            </div>
+            <div className="vault-card-body">
+              <div className="maint-row">
+                <div>
+                  <div className="maint-title">Rebuild Series MOC</div>
+                  <div className="maint-desc">Tái tạo các file Atlas/Series/ từ frontmatter hiện có</div>
+                </div>
+                <ActionBtn label="Rebuild MOC" state={actions.moc || 'idle'}
+                  result={results.moc}
+                  onClick={() => runAction('moc', 'rebuild_mocs')} />
               </div>
-              <ActionBtn label="Rebuild MOC" state={actions.moc || 'idle'}
-                result={results.moc}
-                onClick={() => runAction('moc', 'rebuild_mocs')} />
             </div>
           </div>
 
