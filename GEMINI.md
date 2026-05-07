@@ -100,20 +100,35 @@ SYSTEM_DIR/chroma_db/   ← vector index (local only)
 
 ---
 
-## Research View (Deep Research Agent)
+## Research View (Chat + Deep Research)
 
-Giao diện nghiên cứu phong cách Gemini Researcher / NotebookLM với cơ chế **Keep-Alive** (giữ trạng thái khi chuyển tab).
+Module nghiên cứu kết hợp RAG local và web search với giao diện Omnibox cao cấp.
 
-### Research Modes
-- **Wiki Vault (Local):** Chat và trích dẫn [1], [2] từ kho tri thức cá nhân (RAG).
-- **Deep Web (Agentic):** Agent tự động thực hiện workflow: **Planner -> Search (Tavily) -> Scrape (Deep Crawler) -> Synthesize**.
+### Bốn chế độ hoạt động (Research Modes)
+| Chế độ | Mô tả | Tính năng chính |
+|---|---|---|
+| **Tìm nhanh** | Hybrid search (Wiki + Web) | Trả lời nhanh, có trích dẫn nguồn [1], [2]... |
+| **Deep Research** | Nghiên cứu sâu đa bước | Planning -> Search -> Scrape -> Synthesize |
+| **Extract URL** | Trích xuất tri thức trực tiếp | URL -> Markdown -> Wiki Library |
+| **Smart Crawl** | Thu thập domain tự động | Thêm domain vào pipeline crawl định kỳ |
 
-### Tính năng cốt lõi
-- **Split-pane Layout:** Chat bên trái, Tài liệu tham khảo (Sources) bên phải. Click trích dẫn để highlight nguồn.
-- **Thinking Process:** Hiển thị từng bước tư duy của Agent (Đang phân tích, Đang search, Đang đọc...).
-- **Persistence:** 
-    *   **Lưu vào Wiki:** Nút lưu báo cáo nghiên cứu trực tiếp vào Obsidian vault.
-    *   **Lịch sử (History):** Tự động lưu và cho phép tải lại các phiên nghiên cứu cũ từ `research_history.json`.
+### Quy trình Deep Research 2 bước (Agentic Workflow)
+Hệ thống sử dụng mô hình "Human-in-the-loop" để tối ưu chi phí và độ chính xác:
+1. **Giai đoạn Lập kế hoạch (Planning)**: AI phân tích prompt và đề xuất danh sách các câu lệnh tìm kiếm và mục tiêu nghiên cứu (Research Plan).
+2. **Giai đoạn Thực thi (Execution)**: Người dùng duyệt/sửa kế hoạch, AI tiến hành "lùng sục" Internet, trích xuất dữ liệu và tổng hợp báo cáo chuyên sâu.
+
+### Giao diện Omnibox & Dynamic UI
+- **Smart Input**: Ô nhập liệu phong cách Gemini với bộ chọn AI Provider (Ollama, Gemini, Vertex AI) và Model ngay tại chỗ.
+- **Source Filtering**: Cho phép giới hạn không gian tìm kiếm: `Tất cả`, `Chỉ Wiki`, hoặc `Chỉ Web`.
+- **Dynamic Layout**: 
+  - **Bình thường**: Chat bên trái, Sidebar (Lịch sử/Nguồn) bên phải có thể thu gọn (Collapsible).
+  - **Khi nghiên cứu**: Tự động chuyển sang giao diện toàn màn hình, hiển thị **Progress Panel** với skeleton loading và tiến trình tư duy chi tiết.
+- **Retry Logic**: Hỗ trợ nút **"Thử lại"** ngay trong tin nhắn nếu gặp lỗi API hoặc mạng.
+
+### Infrastructure & Persistence
+- `WebSearchProvider`: Tavily API client hỗ trợ tìm kiếm đa luồng.
+- `DeepResearchUseCase`: Điều phối quy trình lập kế hoạch và thực thi nghiên cứu.
+- `History Persistence`: Tự động lưu và tải lại các phiên nghiên cứu từ `research_history.json`.
 
 ---
 

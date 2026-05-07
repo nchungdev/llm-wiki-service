@@ -89,7 +89,7 @@ class AIProvider:
         try:
             return await self._call_provider(active_provider, prompt)
         except Exception as e:
-            logger.warning(f"Primary provider {active_provider} failed: {e}. Trying fallbacks...")
+            logger.warning(f"Primary provider {active_provider} failed: {type(e).__name__}: {e}. Trying fallbacks...")
             for f in ["gemini", "vertexai", "ollama"]:
                 if f == active_provider: continue
                 if f in ("gemini", "vertexai") and f not in self.clients: continue
@@ -97,7 +97,9 @@ class AIProvider:
                     res = await self._call_provider(f, prompt)
                     logger.info(f"✅ Fallback successful using {f}")
                     return res
-                except: continue
+                except Exception as fe:
+                    logger.warning(f"  Fallback {f} also failed: {type(fe).__name__}: {fe}")
+                    continue
             raise e
 
     async def _call_provider(self, provider: str, prompt: str):
@@ -146,17 +148,21 @@ class AIProvider:
             await self.limiter.record_usage(total_tokens)
             return response.text
         else:
-            # Ollama
-            if not self.model_name:
-                available = await self.get_available_models("ollama")
-                if not available:
-                    raise ValueError("No Ollama models found. Please pull a model first (e.g. `ollama pull llama3.1`).")
+            # Ollama — validate model_name (may be a Gemini/Vertex path when falling back)
+            available = await self.get_available_models("ollama")
+            if not available:
+                raise ValueError("No Ollama models found. Please pull a model first (e.g. `ollama pull llama3.1`).")
+            ollama_ids = {m["id"] for m in available}
+            if not self.model_name or self.model_name not in ollama_ids:
+                if self.model_name:
+                    logger.warning(f"⚠️ model_name '{self.model_name}' is not an Ollama model. Auto-selecting.")
                 self.model_name = available[0]["id"]
 
-            async with httpx.AsyncClient(timeout=120.0) as client:
+            async with httpx.AsyncClient(timeout=300.0) as client:
                 resp = await client.post(
                     f"{self.ollama_host}/api/generate",
-                    json={"model": self.model_name, "prompt": prompt, "stream": False}
+                    json={"model": self.model_name, "prompt": prompt, "stream": False,
+                          "options": {"num_ctx": 16384}}
                 )
                 resp.raise_for_status()
                 return resp.json().get("response", "")
@@ -167,13 +173,15 @@ class AIProvider:
         try:
             return await self._call_provider_structured(active_provider, prompt, use_heavy_model)
         except Exception as e:
-            logger.warning(f"Primary provider {active_provider} failed (Structured): {e}. Trying fallbacks...")
+            logger.warning(f"Primary provider {active_provider} failed (Structured): {type(e).__name__}: {e}. Trying fallbacks...")
             for f in ["gemini", "vertexai", "ollama"]:
                 if f == active_provider: continue
                 if f in ("gemini", "vertexai") and f not in self.clients: continue
                 try:
                     return await self._call_provider_structured(f, prompt, use_heavy_model)
-                except: continue
+                except Exception as fe:
+                    logger.warning(f"  Fallback {f} (Structured) also failed: {type(fe).__name__}: {fe}")
+                    continue
             raise e
 
     async def _call_provider_structured(self, provider: str, prompt: str, use_heavy_model: bool):
@@ -220,22 +228,25 @@ class AIProvider:
             return json.loads(response.text)
         else:
             import re
+            # Fetch available Ollama models once for all validation below
+            ollama_available = await self.get_available_models("ollama")
+            if not ollama_available:
+                raise ValueError("No Ollama models found. Please pull a model first (e.g. `ollama pull llama3.1`).")
+            ollama_ids = {m["id"] for m in ollama_available}
+
             # Ollama dynamic heavy selection
-            if use_heavy_model and not self.heavy_model:
-                available = await self.get_available_models("ollama")
-                if not available:
-                    raise ValueError("No Ollama models found. Please pull a model first (e.g. `ollama pull llama3.1`).")
-                # Prefer a larger/pro model; fall back to first available
+            if use_heavy_model and (not self.heavy_model or self.heavy_model not in ollama_ids):
                 self.heavy_model = next(
-                    (m["id"] for m in available if "70b" in m["id"].lower() or "pro" in m["id"].lower()),
-                    available[0]["id"]
+                    (m["id"] for m in ollama_available if "70b" in m["id"].lower() or "pro" in m["id"].lower()),
+                    ollama_available[0]["id"]
                 )
 
-            if not self.model_name:
-                available = await self.get_available_models("ollama")
-                if not available:
-                    raise ValueError("No Ollama models found. Please pull a model first (e.g. `ollama pull llama3.1`).")
-                self.model_name = available[0]["id"]
+            # Validate model_name — may be a Gemini/Vertex path when falling back from another provider
+            if not self.model_name or self.model_name not in ollama_ids:
+                if self.model_name:
+                    logger.warning(f"⚠️ model_name '{self.model_name}' is not an Ollama model. Auto-selecting from available Ollama models.")
+                self.model_name = ollama_available[0]["id"]
+                logger.info(f"🔄 Ollama fallback model selected: {self.model_name}")
             model = self.heavy_model if use_heavy_model else self.model_name
             keep_alive = "0" if use_heavy_model else "5m"
             async with httpx.AsyncClient(timeout=180.0) as client:
@@ -262,6 +273,21 @@ class AIProvider:
                         try: return json.loads(clean_json)
                         except: pass
                     raise
+
+    def for_request(self, provider_type: Optional[str] = None, model_name: Optional[str] = None) -> "AIProvider":
+        """Return a lightweight copy of this provider with a different active provider/model.
+        Reuses already-initialized clients — no new auth round-trips."""
+        if not provider_type or provider_type == self.provider_type:
+            if not model_name or model_name == self.model_name:
+                return self  # nothing to override
+        import copy
+        clone = copy.copy(self)  # shallow copy — shares clients dict
+        if provider_type:
+            clone.provider_type = provider_type
+            clone.is_fallback = provider_type in ("gemini", "vertexai") and provider_type not in self.clients
+        if model_name:
+            clone.model_name = model_name
+        return clone
 
     def update_config(self, api_key: Optional[str] = None, model_name: Optional[str] = None):
         if api_key:
@@ -306,10 +332,15 @@ class AIProvider:
             try:
                 for m in self.clients["gemini"].models.list():
                     name = m.name  # e.g. "models/gemini-2.0-flash"
+                    label = name.replace("models/", "")
+                    # Only include models that support generateContent and are not deprecated/experimental
+                    supported = getattr(m, 'supported_actions', None) or getattr(m, 'supported_generation_methods', [])
+                    if supported and 'generateContent' not in supported:
+                        continue
                     if "gemini" in name and "embedding" not in name and "tts" not in name \
                             and "image" not in name and "audio" not in name:
-                        label = name.replace("models/", "")
-                        models.append({"id": name, "label": label})
+                        # Use short name (without "models/" prefix) for API calls
+                        models.append({"id": label, "label": label})
             except Exception as e:
                 logger.error(f"Error fetching Gemini models: {e}")
 

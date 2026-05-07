@@ -556,42 +556,48 @@ def create_router(
             payload = await request.json()
             message = payload.get("message")
             plan = payload.get("plan")
-            
+            req_provider = payload.get("provider")
+            req_model = payload.get("model")
+
             from app.core.container import container
             from app.domain.use_cases.deep_research_use_cases import DeepResearchUseCase
-            
+
+            ai = container.ai_provider.for_request(req_provider, req_model)
             use_case = DeepResearchUseCase(
-                container.ai_provider,
+                ai,
                 container.search_provider,
                 container.url_scraper,
                 system_dir=container.config.storage.system_dir
             )
-            
+
             return await use_case.execute(message, plan=plan)
         except Exception as e:
-            logger.error(f"Deep Research error: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error(f"Deep Research error: {type(e).__name__}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
     @router.post("/research/deep/plan")
     async def deep_research_plan(request: Request):
         try:
             payload = await request.json()
             message = payload.get("message")
-            
+            req_provider = payload.get("provider")
+            req_model = payload.get("model")
+
             from app.core.container import container
             from app.domain.use_cases.deep_research_use_cases import DeepResearchUseCase
-            
+
+            ai = container.ai_provider.for_request(req_provider, req_model)
             use_case = DeepResearchUseCase(
-                container.ai_provider,
+                ai,
                 container.search_provider,
                 container.url_scraper,
                 system_dir=container.config.storage.system_dir
             )
-            
+
             return await use_case.generate_plan(message)
         except Exception as e:
-            logger.error(f"Plan generation error: {e}")
-            raise HTTPException(status_code=500, detail=str(e))
+            logger.error(f"Plan generation error: {type(e).__name__}: {e}", exc_info=True)
+            raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
     @router.post("/research/extract")
     async def research_extract(payload: dict):

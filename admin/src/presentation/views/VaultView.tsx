@@ -4,7 +4,7 @@ import {
   Star, Clock, Unlink, Link2Off, BarChart2, CheckCircle2,
   Loader2, ChevronDown, ChevronUp, FileText, TrendingUp, ShieldAlert,
   Search, X, Library, Tag, ShieldCheck, Copy, Database,
-  Inbox, Sparkles, CheckCheck, Eye, SkipForward, MoveRight,
+  Inbox, Sparkles, CheckCheck, SkipForward, MoveRight,
 } from 'lucide-react';
 import { AdminApi } from '../../infrastructure/api/AdminApi';
 import '../styles/VaultView.css';

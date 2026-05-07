@@ -10,7 +10,7 @@ logger = logging.getLogger(__name__)
 # Provider-specific default embedding models (used when discovery fails or returns empty)
 _EMBED_DEFAULTS = {
     "gemini":   "models/text-embedding-004",
-    "vertexai": "text-embedding-004",
+    "vertexai": "publishers/google/models/text-embedding-004",
 }
 
 class GeminiEmbeddingFunction(EmbeddingFunction):
@@ -104,8 +104,11 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
                 and 'embedContent' in (m.supported_generation_methods or [])
             ]
             if discovered:
-                # Prefer models with "embedding" in name
-                model = next((m for m in discovered if "embedding" in m.lower()), discovered[0])
+                # Prioritize 'text-embedding-004' if it exists, otherwise any embedding model
+                model = next((m for m in discovered if "text-embedding-004" in m.lower()), None)
+                if not model:
+                    model = next((m for m in discovered if "embedding" in m.lower()), discovered[0])
+                
                 logger.info(f"✅ Discovered embed model for {provider}: {model}")
                 self._resolved_model[provider] = model
                 return model
@@ -177,15 +180,35 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
                 except Exception as e:
                     raise ValueError(f"Could not discover Ollama embedding model: {e}")
             
-            async with httpx.AsyncClient(timeout=60.0) as client:
-                embeddings = []
-                for text in input:
+            async with httpx.AsyncClient(timeout=120.0) as client:
+                # Try new batch endpoint first (/api/embed, Ollama ≥0.1.26)
+                try:
                     resp = await client.post(
-                        f"{self.ollama_host}/api/embeddings",
-                        json={"model": model, "prompt": text}
+                        f"{self.ollama_host}/api/embed",
+                        json={"model": model, "input": list(input)}
                     )
                     resp.raise_for_status()
-                    embeddings.append(resp.json().get("embedding", []))
+                    data = resp.json()
+                    vecs = data.get("embeddings") or data.get("embedding") or []
+                    if vecs and len(vecs) == len(input):
+                        logger.debug(f"✅ Ollama /api/embed batch OK ({len(input)} docs)")
+                        return vecs
+                except Exception as e:
+                    logger.warning(f"⚠️ Ollama /api/embed failed ({type(e).__name__}: {e}). Falling back to /api/embeddings...")
+
+                # Fallback: old per-item endpoint (/api/embeddings)
+                embeddings = []
+                for text in input:
+                    try:
+                        resp = await client.post(
+                            f"{self.ollama_host}/api/embeddings",
+                            json={"model": model, "prompt": text}
+                        )
+                        resp.raise_for_status()
+                        embeddings.append(resp.json().get("embedding", []))
+                    except Exception as e:
+                        logger.error(f"❌ Ollama embedding segment failed for model {model}: {type(e).__name__}: {e}")
+                        embeddings.append([0.0] * 768)
                 return embeddings
 
     def __call__(self, input: Documents) -> Embeddings:
