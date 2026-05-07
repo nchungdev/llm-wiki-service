@@ -2,10 +2,7 @@
 
 .vault-view {
     flex: 1;
-    overflow-y: auto;
-    padding: 16px 24px;
-    box-sizing: border-box;
-    max-width: 860px;
+    min-height: 0;
 }
 
 /* ── Toolbar (replaces header — title shown in app header) */

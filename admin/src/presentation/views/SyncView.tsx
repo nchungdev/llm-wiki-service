@@ -328,7 +328,7 @@ export const SyncView: React.FC = () => {
 
   return (
     <DndContext onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      <div className="view-panel active">
+      <div className="view-panel active no-pad">
         <div className="pipeline-layout">
           
           {/* ── Sources Library — Horizontal Tabs ─────────────────────────────── */}

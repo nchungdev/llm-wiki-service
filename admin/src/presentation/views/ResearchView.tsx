@@ -202,7 +202,7 @@ export const ResearchView: React.FC = () => {
   };
 
   return (
-    <div className="view-panel active">
+    <div className="view-panel active no-pad">
       <div className={`research-layout ${isExecutingDeep ? 'full-width' : ''}`}>
         
         <div className="chat-section">

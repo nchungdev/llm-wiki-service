@@ -126,10 +126,20 @@ body, html {
     flex-direction: column;
 }
 
+/* Default: all views get consistent padding + scroll */
 .view-panel.active {
     display: flex;
     flex: 1;
     min-height: 0;
+    padding: 20px 24px;
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+
+/* Views that manage their own full-bleed layout (SyncView, ResearchView) */
+.view-panel.active.no-pad {
+    padding: 0;
+    overflow: hidden;
 }
 
 /* ── Components ─────────────────────────────────── */

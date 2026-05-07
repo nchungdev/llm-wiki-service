@@ -35,7 +35,7 @@ export const PipelineHistoryView: React.FC = () => {
   }, [fetchHistory]);
 
   return (
-    <div className="view-panel active" style={{ padding: '16px 24px', overflowY: 'auto', flex: 1, minHeight: 0, boxSizing: 'border-box' }}>
+    <div className="view-panel active" style={{ flexDirection: 'column', gap: 0 }}>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
         <span style={{ fontSize: '0.72rem', color: 'var(--text-tertiary)' }}>{history.length} lần chạy gần nhất</span>
