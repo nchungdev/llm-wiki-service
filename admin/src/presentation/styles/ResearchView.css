@@ -27,6 +27,11 @@
   to   { transform: translateX(0);      opacity: 1; }
 }
 
+@keyframes slideInRight {
+  from { transform: translateX(300px); opacity: 0; }
+  to   { transform: translateX(0);      opacity: 1; }
+}
+
 .rv-history-header {
   display: flex;
   align-items: center;
@@ -330,6 +335,37 @@
   overflow-y: auto;
 }
 
+/* ── Home floating actions ──────────────────────────────── */
+.rv-home-actions {
+  display: flex;
+  justify-content: flex-end;
+  padding: 10px 24px 0;
+  flex-shrink: 0;
+}
+
+/* ── Workspace bar ──────────────────────────────────────── */
+.rv-workspace-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 20px;
+  border-bottom: 1px solid #eee;
+  background: #fff;
+  flex-shrink: 0;
+  min-height: 48px;
+}
+
+.rv-workspace-query {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 400px;
+}
+
+/* ── Home input wrap ────────────────────────────────────── */
 .rv-home-input-wrap {
   width: 100%;
   max-width: 720px;
@@ -383,12 +419,7 @@
   border-radius: 16px;
 }
 
-.rv-omnibox-icon {
-  position: absolute;
-  left: 16px;
-  top: 18px;
-  color: #aaa;
-}
+
 
 .rv-omnibox-input {
   width: 100%;
@@ -485,7 +516,14 @@
   margin-bottom: 12px;
 }
 
-.rv-suggestions { display: flex; flex-direction: column; gap: 8px; }
+.rv-suggestions-wrap {
+  width: 100%;
+  max-width: 720px;
+  margin: 24px auto 40px;
+  padding: 0 40px;
+}
+
+.rv-suggestions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .rv-suggestion-card {
   display: flex;
@@ -861,7 +899,9 @@
   outline: none;
   cursor: pointer;
   color: var(--text-primary);
-  max-width: 100px;
+  max-width: 120px;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .rv-divider {
@@ -873,13 +913,14 @@
 
 /* ── Right Sources Panel ───────────────────────────────── */
 .rv-sources-panel {
-  width: 280px;
-  min-width: 280px;
+  width: 300px;
+  min-width: 300px;
   background: #fff;
   border-left: 1px solid #eee;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  animation: slideInRight 0.2s ease;
 }
 
 .rv-sources-header {
