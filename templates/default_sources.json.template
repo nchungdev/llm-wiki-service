@@ -1,0 +1,9 @@
+[
+    {
+        "name": "Example Tech Blog",
+        "url": "https://example.com/feed",
+        "category": "Tech",
+        "type": "rss",
+        "active": true
+    }
+]

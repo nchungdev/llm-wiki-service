@@ -1,0 +1,18 @@
+services:
+  server:
+    build: ./server
+    ports:
+      - "3030:3030"
+    volumes:
+      - ./data:/app/data
+    environment:
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+
+  client:
+    build: ./client
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://localhost:3030/api
+    depends_on:
+      - server

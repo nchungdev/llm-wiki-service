@@ -1,0 +1,28 @@
+{
+    "storage": {
+        "vault_dir": "/path/to/your/obsidian/vault",
+        "system_dir": "/path/to/your/system/data"
+    },
+    "ai": {
+        "provider": "ollama",
+        "model": "gemma2",
+        "embed_model": "nomic-embed-text",
+        "max_rpm": 5,
+        "max_tpm": 30000
+    },
+    "pipeline": {
+        "max_concurrent": 3,
+        "cook_interval_sec": 300,
+        "auto_start": false,
+        "auto_cook": false,
+        "crawl_enabled": false,
+        "crawl_time": "06:00"
+    },
+    "server": {
+        "port": 3030,
+        "remote_access": false
+    },
+    "gcp_project_id": null,
+    "gcp_location": "us-central1",
+    "gcp_key_file": null
+}
