@@ -1,0 +1,233 @@
+/* SystemHealthWidget.css */
+
+.shw-root {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+/* ── Trigger row ─────────────────────────────────────── */
+.shw-trigger-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Health dot button */
+.shw-health-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-secondary);
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    transition: background 0.15s, border-color 0.15s;
+    position: relative;
+}
+.shw-health-btn:hover,
+.shw-health-btn.active {
+    background: var(--surface-2, #f8fafc);
+    border-color: var(--primary);
+    color: var(--text-primary);
+}
+
+/* Severity dot */
+.shw-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.shw-dot.dot-ok      { background: #10b981; box-shadow: 0 0 0 2px #10b98130; }
+.shw-dot.dot-warn    { background: #f59e0b; box-shadow: 0 0 0 2px #f59e0b30; }
+.shw-dot.dot-error   { background: #ef4444; box-shadow: 0 0 0 2px #ef444430; animation: shw-pulse 1.8s ease-in-out infinite; }
+.shw-dot.dot-loading { background: #94a3b8; }
+
+@keyframes shw-pulse {
+    0%, 100% { box-shadow: 0 0 0 2px #ef444430; }
+    50%       { box-shadow: 0 0 0 5px #ef444415; }
+}
+
+.shw-issue-count {
+    min-width: 18px;
+    height: 18px;
+    background: #ef4444;
+    color: #fff;
+    border-radius: 9999px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 4px;
+}
+
+/* Stop button */
+.shw-stop-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid #ef4444;
+    border-radius: var(--radius-md);
+    background: #fef2f2;
+    color: #dc2626;
+    cursor: pointer;
+    font-size: 0.8125rem;
+    font-weight: 600;
+    transition: background 0.15s;
+}
+.shw-stop-btn:hover:not(:disabled) {
+    background: #fee2e2;
+}
+.shw-stop-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* Run sync */
+.shw-run-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+.shw-run-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* ── Popover ─────────────────────────────────────────── */
+.shw-popover {
+    position: absolute;
+    top: calc(100% + 10px);
+    right: 0;
+    width: 380px;
+    background: var(--surface, #fff);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.12), 0 2px 8px rgba(0,0,0,0.06);
+    z-index: 9999;
+    overflow: hidden;
+    animation: shw-pop-in 0.15s ease;
+}
+
+@keyframes shw-pop-in {
+    from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+    to   { opacity: 1; transform: translateY(0)    scale(1); }
+}
+
+.shw-pop-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+}
+.shw-pop-title {
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.shw-pop-refresh {
+    width: 24px;
+    height: 24px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    transition: background 0.12s;
+}
+.shw-pop-refresh:hover { background: var(--border); }
+.shw-pop-refresh:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.shw-pop-loading {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 24px 16px;
+    font-size: 0.8125rem;
+    color: var(--text-tertiary);
+}
+
+.shw-pop-rows {
+    padding: 6px 0;
+}
+
+/* ── Health Row ──────────────────────────────────────── */
+.shw-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 16px;
+    transition: background 0.1s;
+}
+.shw-row:hover { background: var(--surface-2, #f8fafc); }
+
+.shw-row-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+.shw-row-icon { color: var(--text-tertiary); flex-shrink: 0; }
+.shw-row-label {
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.shw-row-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+}
+.shw-row-status {
+    font-size: 0.75rem;
+    color: var(--text-tertiary);
+    text-align: right;
+    max-width: 180px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.shw-row-status.ok    { color: #10b981; }
+.shw-row-status.warn  { color: #f59e0b; }
+.shw-row-status.error { color: #ef4444; }
+
+.shw-row-action {
+    padding: 3px 10px;
+    font-size: 0.72rem;
+    font-weight: 600;
+    border-radius: 6px;
+    border: 1px solid var(--primary);
+    background: var(--primary-bg, #eff6ff);
+    color: var(--primary);
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.12s;
+}
+.shw-row-action:hover { background: var(--primary); color: #fff; }
+.shw-row-action.danger {
+    border-color: #ef4444;
+    background: #fef2f2;
+    color: #dc2626;
+}
+.shw-row-action.danger:hover { background: #ef4444; color: #fff; }
+
+/* ── Spin ────────────────────────────────────────────── */
+.shw-spin {
+    animation: shw-rotate 0.9s linear infinite;
+}
+@keyframes shw-rotate {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}

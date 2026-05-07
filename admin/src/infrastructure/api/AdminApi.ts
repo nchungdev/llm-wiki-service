@@ -26,6 +26,13 @@ export const AdminApi = {
   getPipelineStatus: () => api.get<PipelineStatus>('/pipeline/status'),
   runPipeline: (sourceId?: string) => api.post('/pipeline/run', { source_id: sourceId }),
   reindexWiki: () => api.post('/pipeline/reindex'),
+  stopPipeline: () => api.post<{ status: string; cancelled: number }>('/pipeline/stop'),
+  getSystemHealth: () => api.get<{
+    pipeline: { crawl_running: boolean; cook_running: boolean; error?: string };
+    rag: { available: boolean; indexed: number; vault_total: number; coverage_pct: number; embed_provider?: string; reason?: string };
+    inbox: { count: number; error?: string };
+    vault: { total: number; critical_issues: number; counts: Record<string, number>; error?: string };
+  }>('/system/health'),
   getPipelineHistory: () => api.get<PipelineHistory[]>('/pipeline/history'),
 
   // Data
@@ -47,6 +54,19 @@ export const AdminApi = {
   // Vault
   vaultAudit: () => api.get<any>('/vault/audit'),
   vaultCleanup: (action: string, params?: Record<string, any>) => api.post('/vault/cleanup', { action, ...params }),
+  vaultLibrary: () => api.get<{ pages: any[]; total: number }>('/vault/library'),
+  vaultBulkDelete: (filenames: string[]) => api.post<{ deleted: number; errors: any[] }>('/vault/bulk-delete', { filenames }),
+  // Inbox
+  getVaultInbox: () => api.get<{ items: any[]; total: number }>('/vault/inbox'),
+  processInbox: (paths?: string[]) => api.post<{ task_id: string; status: string }>('/vault/inbox/process', { paths }),
+  getInboxStatus: (taskId: string) => api.get<any>(`/vault/inbox/status/${taskId}`),
+  applyInboxPlan: (plan: any) => api.post<any>('/vault/inbox/apply', { plan }),
+
+  getRagStatus: () => api.get<{
+    available: boolean; reason?: string;
+    indexed: number; vault_total: number; coverage_pct: number;
+    embed_provider?: string; embed_model?: string; db_path?: string;
+  }>('/rag/status'),
 
   // Logs
   getLogs: () => api.get<{logs: any[]}>('/admin/logs'),

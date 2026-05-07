@@ -25,15 +25,19 @@ class AIProvider:
         self.gcp_location = gcp_location
         self.gcp_key_file = gcp_key_file
 
-        # Model Names
-        default_model = "llama3.1:8b" if self.provider_type == "ollama" else "publishers/google/models/gemini-2.5-flash"
-        self.model_name = model_name or os.getenv("AI_MODEL", default_model)
-        self.heavy_model = os.getenv("AI_HEAVY_MODEL", "gemma4")
+        # Model Names (Initially empty if not in env, will discover dynamically if needed)
+        self.model_name = model_name or os.getenv("AI_MODEL")
+        self.heavy_model = os.getenv("AI_HEAVY_MODEL")
 
         # Initialize Clients
         self.clients = {} # Store multiple clients
         self.is_fallback = False
         self._init_clients()
+
+        # If no model specified, we'll try to pick one dynamically later during first call
+        # but let's log the initial state
+        if not self.model_name:
+            logger.info("ℹ️ No AI_MODEL specified. Will perform dynamic discovery on first call.")
 
     def _init_clients(self):
         """Initialize all possible clients based on configuration."""
@@ -102,6 +106,18 @@ class AIProvider:
             if not client: raise ValueError(f"Provider {provider} not ready")
             await self.limiter.wait_for_slot(len(prompt) // 2)
             
+            # ── Dynamic Model Discovery ────────────────────────
+            if not self.model_name:
+                logger.info(f"🔍 Discovering models for {provider}...")
+                available = await self.get_available_models(provider)
+                if available:
+                    # Logic: Prefer flash, then anything available
+                    best = next((m["id"] for m in available if "flash" in m["id"].lower() and "preview" not in m["id"].lower()), available[0]["id"])
+                    self.model_name = best
+                    logger.info(f"✨ Auto-selected model: {self.model_name}")
+                else:
+                    raise ValueError(f"No models available on {provider}")
+
             model = self.model_name
             logger.info(f"🚀 Calling {provider} with model: {model}")
             
@@ -111,32 +127,19 @@ class AIProvider:
                     contents=prompt
                 )
             except Exception as e:
-                if "404" in str(e):
-                    logger.warning(f"⚠️ Model {model} not found (404) on {provider}. Attempting dynamic discovery...")
-                    # Try to find ANY available model to prevent failure
-                    try:
-                        available = []
-                        for m in client.models.list():
-                            name = m.name
-                            if "gemini" in name and "embedding" not in name and "tts" not in name \
-                                    and "image" not in name and "audio" not in name:
-                                available.append(name)
-
-                        if available:
-                            # Prefer flash, use full path as model ID
-                            fallback_model = next((m for m in available if "flash" in m.lower() and "preview" not in m.lower()), available[0])
-                            logger.info(f"🔄 Dynamic fallback found: {fallback_model}. Retrying...")
-                            response = await client.aio.models.generate_content(
-                                model=fallback_model,
-                                contents=prompt
-                            )
-                        else:
-                            raise e
-                    except Exception as fe:
-                        logger.error(f"Dynamic discovery failed: {fe}")
-                        raise e
-                else:
-                    raise e
+                if "404" in str(e) or "NOT_FOUND" in str(e):
+                    logger.warning(f"⚠️ Model {model} not found (404) on {provider}. Re-discovering...")
+                    available = await self.get_available_models(provider)
+                    if available:
+                        fallback_model = next((m["id"] for m in available if "flash" in m["id"].lower() and "preview" not in m["id"].lower() and m["id"] != model), available[0]["id"])
+                        logger.info(f"🔄 Dynamic fallback found: {fallback_model}. Retrying...")
+                        self.model_name = fallback_model # Update to valid model
+                        response = await client.aio.models.generate_content(
+                            model=fallback_model,
+                            contents=prompt
+                        )
+                    else: raise e
+                else: raise e
 
             usage = getattr(response, 'usage_metadata', None)
             total_tokens = usage.total_token_count if usage else len(response.text) // 2
@@ -144,6 +147,12 @@ class AIProvider:
             return response.text
         else:
             # Ollama
+            if not self.model_name:
+                available = await self.get_available_models("ollama")
+                if not available:
+                    raise ValueError("No Ollama models found. Please pull a model first (e.g. `ollama pull llama3.1`).")
+                self.model_name = available[0]["id"]
+
             async with httpx.AsyncClient(timeout=120.0) as client:
                 resp = await client.post(
                     f"{self.ollama_host}/api/generate",
@@ -173,6 +182,13 @@ class AIProvider:
             if not client: raise ValueError(f"Provider {provider} not ready")
             await self.limiter.wait_for_slot(len(prompt) // 2)
             
+            # Dynamic selection if missing
+            if not self.model_name:
+                available = await self.get_available_models(provider)
+                if available:
+                    self.model_name = next((m["id"] for m in available if "flash" in m["id"].lower()), available[0]["id"])
+                else: raise ValueError("No models found")
+
             model = self.model_name
             logger.info(f"🚀 Calling {provider} (Structured) with model: {model}")
 
@@ -183,23 +199,19 @@ class AIProvider:
                     config={'response_mime_type': 'application/json'}
                 )
             except Exception as e:
-                if "404" in str(e):
-                    logger.warning(f"⚠️ Model {model} not found (404). Attempting dynamic discovery...")
-                    try:
-                        available = []
-                        async for m in client.aio.models.list():
-                            if 'generateContent' in m.supported_generation_methods:
-                                available.append(m.name)
-                        if available:
-                            fallback_model = next((m for m in available if "flash" in m.lower()), available[0])
-                            logger.info(f"🔄 Dynamic fallback found: {fallback_model}. Retrying...")
-                            response = await client.aio.models.generate_content(
-                                model=fallback_model,
-                                contents=prompt,
-                                config={'response_mime_type': 'application/json'}
-                            )
-                        else: raise e
-                    except: raise e
+                if "404" in str(e) or "NOT_FOUND" in str(e):
+                    logger.warning(f"⚠️ Model {model} not found (404). Re-discovering...")
+                    available = await self.get_available_models(provider)
+                    if available:
+                        fallback_model = next((m["id"] for m in available if "flash" in m["id"].lower() and m["id"] != model), available[0]["id"])
+                        logger.info(f"🔄 Dynamic fallback: {fallback_model}")
+                        self.model_name = fallback_model
+                        response = await client.aio.models.generate_content(
+                            model=fallback_model,
+                            contents=prompt,
+                            config={'response_mime_type': 'application/json'}
+                        )
+                    else: raise e
                 else: raise e
 
             usage = getattr(response, 'usage_metadata', None)
@@ -208,6 +220,22 @@ class AIProvider:
             return json.loads(response.text)
         else:
             import re
+            # Ollama dynamic heavy selection
+            if use_heavy_model and not self.heavy_model:
+                available = await self.get_available_models("ollama")
+                if not available:
+                    raise ValueError("No Ollama models found. Please pull a model first (e.g. `ollama pull llama3.1`).")
+                # Prefer a larger/pro model; fall back to first available
+                self.heavy_model = next(
+                    (m["id"] for m in available if "70b" in m["id"].lower() or "pro" in m["id"].lower()),
+                    available[0]["id"]
+                )
+
+            if not self.model_name:
+                available = await self.get_available_models("ollama")
+                if not available:
+                    raise ValueError("No Ollama models found. Please pull a model first (e.g. `ollama pull llama3.1`).")
+                self.model_name = available[0]["id"]
             model = self.heavy_model if use_heavy_model else self.model_name
             keep_alive = "0" if use_heavy_model else "5m"
             async with httpx.AsyncClient(timeout=180.0) as client:
@@ -269,30 +297,34 @@ class AIProvider:
         return status
 
     async def get_available_models(self, provider_type: Optional[str] = None):
-        """Fetch models from specific or all configured providers."""
+        """Fetch models from specific or all configured providers. 100% Dynamic."""
         models = []
         target = provider_type or self.provider_type
         
-        # 1. Try Gemini
+        # 1. Try Gemini (sync iterator — aio.models.list() returns a coroutine, not async iterator)
         if target == "gemini" and "gemini" in self.clients:
             try:
-                async for m in self.clients["gemini"].aio.models.list():
-                    if 'generateContent' in m.supported_generation_methods:
-                        name = m.name # Use full name as ID
+                for m in self.clients["gemini"].models.list():
+                    name = m.name  # e.g. "models/gemini-2.0-flash"
+                    if "gemini" in name and "embedding" not in name and "tts" not in name \
+                            and "image" not in name and "audio" not in name:
                         label = name.replace("models/", "")
                         models.append({"id": name, "label": label})
-            except: pass
+            except Exception as e:
+                logger.error(f"Error fetching Gemini models: {e}")
 
         # 2. Try Vertex — model ID must be the full "publishers/google/models/..." path
         if target == "vertexai" and "vertexai" in self.clients:
             try:
+                # Vertex models.list is synchronous in some SDK versions or uses different iterator
                 for m in self.clients["vertexai"].models.list():
-                    name = m.name  # e.g. "publishers/google/models/gemini-2.5-flash"
+                    name = m.name  # e.g. "publishers/google/models/gemini-1.5-flash"
                     if "gemini" in name and "embedding" not in name and "tts" not in name \
                             and "image" not in name and "audio" not in name and "computer" not in name:
                         label = name.split("/")[-1]
                         models.append({"id": name, "label": label})
-            except: pass
+            except Exception as e:
+                logger.error(f"Error fetching Vertex models: {e}")
 
         # 3. Try Ollama
         if target == "ollama":
@@ -303,22 +335,7 @@ class AIProvider:
                         for m in resp.json().get("models", []):
                             name = m["name"]
                             models.append({"id": name, "label": name})
-            except: pass
-
-        if not models:
-            if target == "ollama":
-                return [{"id": "llama3.1:8b", "label": "llama3.1:8b (Default)"}]
-            elif target == "gemini":
-                return [
-                    {"id": "gemini-2.0-flash-001", "label": "gemini-2.0-flash-001"},
-                    {"id": "gemini-2.0-flash", "label": "gemini-2.0-flash"},
-                    {"id": "gemini-2.5-flash-preview-05-20", "label": "gemini-2.5-flash-preview"},
-                ]
-            elif target == "vertexai":
-                return [
-                    {"id": "publishers/google/models/gemini-2.5-flash", "label": "gemini-2.5-flash"},
-                    {"id": "publishers/google/models/gemini-2.5-pro", "label": "gemini-2.5-pro"},
-                    {"id": "publishers/google/models/gemini-2.0-flash-001", "label": "gemini-2.0-flash-001"},
-                ]
+            except Exception as e:
+                logger.error(f"Error fetching Ollama models: {e}")
 
         return sorted(models, key=lambda x: x["label"])

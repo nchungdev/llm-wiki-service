@@ -101,22 +101,22 @@
 
 /* Chat Input - Omnibox */
 .chat-input-container {
-  padding: 0 60px 40px;
+  padding: 0 24px 20px;
   background: linear-gradient(transparent, var(--bg-secondary) 30%);
 }
 
 .chat-input-wrapper {
   background: #fff;
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-radius: 32px;
-  padding: 16px 24px;
+  border-radius: 20px;
+  padding: 10px 16px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-  box-shadow: 
+  gap: 8px;
+  transition: all 0.3s ease;
+  box-shadow:
     0 1px 3px rgba(0,0,0,0.02),
-    0 10px 40px -10px rgba(0,0,0,0.04);
+    0 6px 20px -6px rgba(0,0,0,0.04);
 }
 
 .chat-input-wrapper:focus-within {
@@ -137,19 +137,20 @@
   flex: 1;
   border: none;
   background: transparent;
-  padding: 4px 0;
-  font-size: 1.05rem;
+  padding: 2px 0;
+  font-size: 0.875rem;
   outline: none;
   color: var(--text-primary);
-  min-height: 24px;
+  min-height: 22px;
   resize: none;
+  line-height: 1.5;
 }
 
 .chat-input-footer {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding-top: 12px;
+  padding-top: 6px;
   border-top: 1px solid #f1f5f9;
 }
 
@@ -160,18 +161,20 @@
 }
 
 .selector-btn {
+  position: relative;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 12px;
-  font-size: 0.75rem;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  font-size: 0.72rem;
   font-weight: 600;
   color: var(--text-secondary);
   background: #f8fafc;
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s;
+  white-space: nowrap;
 }
 
 .selector-btn:hover {
@@ -179,25 +182,27 @@
   border-color: var(--border);
 }
 
-.selector-btn select {
-  -webkit-appearance: none;
-  -moz-appearance: none;
-  appearance: none;
-  border: none;
-  background: transparent;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: inherit;
-  outline: none;
-  cursor: pointer;
-  padding: 0;
-  margin: 0;
-  font-family: inherit;
-}
-
 .selector-btn.active {
   color: var(--primary);
   background: var(--primary-bg);
+}
+
+/* Visible label inside selector */
+.selector-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Invisible native select overlays entire button — makes whole area clickable */
+.selector-overlay {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 0.72rem;
 }
 
 .ai-pill {
@@ -218,10 +223,10 @@
 .mode-pill {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 14px;
+  gap: 5px;
+  padding: 4px 10px;
   border-radius: 20px;
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   font-weight: 600;
   cursor: pointer;
   border: 1px solid var(--border);
@@ -243,6 +248,116 @@
 .mode-pill.active.deep {
   background: #000;
   border-color: #000;
+}
+
+/* Message actions */
+.message-actions {
+  margin-top: 10px;
+  border-top: 1px solid rgba(0,0,0,0.05);
+  padding-top: 8px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+/* ── Inline Sources (Gemini-style) ──────────────────── */
+.inline-sources {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(0,0,0,0.06);
+}
+
+.inline-source-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  text-decoration: none;
+  color: inherit;
+  max-width: 220px;
+  min-width: 140px;
+  transition: all 0.15s;
+  cursor: pointer;
+}
+
+.inline-source-card:hover {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.inline-source-card.highlighted {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+  box-shadow: 0 0 0 2px rgba(0, 122, 255, 0.15);
+}
+
+.inline-source-num {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--primary);
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.inline-source-body {
+  min-width: 0;
+  flex: 1;
+}
+
+.inline-source-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1.3;
+}
+
+.inline-source-domain {
+  font-size: 0.68rem;
+  color: var(--text-tertiary);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── History panel ──────────────────────────────────── */
+.history-item-card {
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 6px 10px;
+  cursor: pointer;
+  background: white;
+  transition: all 0.15s;
+}
+
+.history-item-card:hover {
+  border-color: var(--primary);
+  background: var(--primary-bg);
+}
+
+.history-item-date {
+  font-size: 0.65rem;
+  color: #94a3b8;
+  margin-bottom: 3px;
+}
+
+.history-item-query {
+  font-size: 0.8rem;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  color: var(--text-primary);
 }
 
 /* Message Bubbles */

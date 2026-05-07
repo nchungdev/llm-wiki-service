@@ -25,10 +25,10 @@ export const ResearchView: React.FC = () => {
   const [editedSteps, setEditedSteps] = useState<any[]>([]);
   const [savedIds, setSavedIds] = useState<Set<number>>(new Set());
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
-  const [rightPanelTab, setRightPanelTab] = useState<'history' | 'sources'>('history');
   
-  // AI Selection State
-  const [provider, setProvider] = useState('gemini');
+  // AI Selection State — loaded from SystemConfig on mount, no hardcoded defaults
+  const [provider, setProvider] = useState('');
+  const [configLoaded, setConfigLoaded] = useState(false);
   const [model, setModel] = useState('');
   const [models, setModels] = useState<{id: string, label: string}[]>([]);
   const [searchIn, setSearchIn] = useState<'all' | 'wiki' | 'web'>('all');
@@ -37,6 +37,14 @@ export const ResearchView: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    // Load system config first so provider/model reflect admin settings
+    AdminApi.getConfig().then(res => {
+      const cfg = res.data;
+      if (cfg?.ai?.provider) setProvider(cfg.ai.provider);
+      if (cfg?.ai?.model) setModel(cfg.ai.model);
+      setConfigLoaded(true);
+    }).catch(() => setConfigLoaded(true));
+
     fetchAIStatus();
   }, []);
 
@@ -50,8 +58,8 @@ export const ResearchView: React.FC = () => {
   };
 
   useEffect(() => {
-    fetchModels();
-  }, [provider]);
+    if (configLoaded) fetchModels();
+  }, [provider, configLoaded]);
 
   const fetchModels = async () => {
     setModels([]); // Clear while loading
@@ -60,7 +68,11 @@ export const ResearchView: React.FC = () => {
       const fetchedModels = res.data.models;
       setModels(fetchedModels);
       if (fetchedModels.length > 0) {
-        setModel(fetchedModels[0].id);
+        // Keep current model if it's available in the list; otherwise pick the first
+        setModel(prev => {
+          const still = fetchedModels.find((m: {id: string}) => m.id === prev);
+          return still ? prev : fetchedModels[0].id;
+        });
       }
     } catch (e) {
       console.error('Failed to fetch models', e);
@@ -112,7 +124,6 @@ export const ResearchView: React.FC = () => {
       }
 
       setMessages(prev => [...prev, { role: 'ai', text: resText, sources: sources, type: currentMode }]);
-      if (sources.length > 0) setRightPanelTab('sources');
       if (currentMode === 'search') fetchHistory();
     } catch (e) {
       setMessages(prev => [...prev, { role: 'ai', text: 'Xin lỗi, có lỗi xảy ra.' }]);
@@ -139,7 +150,6 @@ export const ResearchView: React.FC = () => {
         sources: res.data.sources, 
         type: 'deep' 
       }]);
-      if (res.data.sources.length > 0) setRightPanelTab('sources');
       fetchHistory();
     } catch (e) {
       setMessages(prev => [...prev, { role: 'ai', text: 'Lỗi thực thi nghiên cứu.' }]);
@@ -169,7 +179,6 @@ export const ResearchView: React.FC = () => {
       { role: 'ai', text: item.response, sources: item.sources }
     ]);
     setMode(item.mode === 'deep' ? 'deep' : 'search');
-    if (item.sources?.length > 0) setRightPanelTab('sources');
   };
 
   const handleSaveToWiki = async (index: number, text: string) => {
@@ -184,15 +193,18 @@ export const ResearchView: React.FC = () => {
     }
   };
 
-  const currentSources = messages.filter(m => m.role === 'ai').slice(-1)[0]?.sources || [];
-
   const renderMessageText = (text: string) => {
     const parts = text.split(/(\[\d+\])/g);
     return parts.map((part, i) => {
       const match = part.match(/\[(\d+)\]/);
       if (match) {
         const id = parseInt(match[1]);
-        return <button key={i} className="citation-badge" onClick={() => { setSelectedSourceId(id); setRightPanelTab('sources'); }}>{id}</button>;
+        return (
+          <button key={i} className="citation-badge" onClick={() => {
+            setSelectedSourceId(id);
+            document.getElementById(`src-${id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }}>{id}</button>
+        );
       }
       return <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{part}</span>;
     });
@@ -254,8 +266,36 @@ export const ResearchView: React.FC = () => {
             {!isExecutingDeep && messages.map((msg, i) => (
               <div key={i} className={`message-bubble message-${msg.role}`}>
                 {renderMessageText(msg.text)}
+
+                {/* Inline sources — shown right below AI response */}
+                {msg.role === 'ai' && msg.sources && msg.sources.length > 0 && (
+                  <div className="inline-sources">
+                    {msg.sources.map(src => {
+                      let domain = '';
+                      try { domain = src.url ? new URL(src.url).hostname.replace('www.', '') : 'Wiki'; } catch { domain = 'Wiki'; }
+                      return (
+                        <a
+                          key={src.id}
+                          id={`src-${src.id}`}
+                          className={`inline-source-card ${selectedSourceId === src.id ? 'highlighted' : ''}`}
+                          href={src.url || '#'}
+                          target={src.url ? '_blank' : '_self'}
+                          rel="noopener noreferrer"
+                          onClick={() => setSelectedSourceId(src.id)}
+                        >
+                          <span className="inline-source-num">[{src.id}]</span>
+                          <div className="inline-source-body">
+                            <div className="inline-source-title">{src.title}</div>
+                            <div className="inline-source-domain">{domain}</div>
+                          </div>
+                        </a>
+                      );
+                    })}
+                  </div>
+                )}
+
                 {msg.role === 'ai' && !loading && (
-                  <div className="message-actions" style={{ marginTop: 12, borderTop: '1px solid rgba(0,0,0,0.05)', paddingTop: 8, display: 'flex', justifyContent: 'flex-end' }}>
+                  <div className="message-actions">
                     <button className={`btn-xs ${savedIds.has(i) ? 'btn-success' : 'btn-secondary'}`} onClick={() => handleSaveToWiki(i, msg.text)}>
                       {savedIds.has(i) ? <><Check size={12} /> Đã lưu</> : <><Save size={12} /> Lưu vào Wiki</>}
                     </button>
@@ -335,38 +375,45 @@ export const ResearchView: React.FC = () => {
                         e.target.style.height = e.target.scrollHeight + 'px';
                     }}
                     />
-                    <button 
-                    className={`btn-icon primary ${(!input.trim() || loading) ? 'opacity-50' : ''}`} 
-                    onClick={handleSend} 
-                    disabled={!input.trim() || loading} 
-                    style={{ width: 40, height: 40, borderRadius: 12, marginTop: 4 }}
+                    <button
+                    className={`btn-icon primary ${(!input.trim() || loading) ? 'opacity-50' : ''}`}
+                    onClick={handleSend}
+                    disabled={!input.trim() || loading}
+                    style={{ width: 32, height: 32, borderRadius: 10, flexShrink: 0 }}
                     >
-                    <Send size={20} />
+                    <Send size={15} />
                     </button>
                 </div>
 
                 <div className="chat-input-footer">
                     <div className="selectors-group">
+                    {/* Provider selector — overlay pattern so clicking anywhere opens dropdown */}
                     <div className="selector-btn">
-                        <Cpu size={14} />
-                        <select value={provider} onChange={e => setProvider(e.target.value)}>
-                        <option value="gemini">Gemini {aiStatus.gemini?.available ? '✅' : '❌'}</option>
-                        <option value="vertexai">Vertex AI {aiStatus.vertexai?.available ? '✅' : '❌'}</option>
-                        <option value="ollama">Ollama {aiStatus.ollama?.available ? '✅' : '❌'}</option>
+                        <Cpu size={13} />
+                        <span className="selector-label">
+                          {provider === 'gemini' ? 'Gemini' : provider === 'vertexai' ? 'Vertex AI' : provider || '—'}
+                          {' '}{aiStatus[provider]?.available ? '✅' : (provider ? '❌' : '')}
+                        </span>
+                        <ChevronDown size={11} />
+                        <select className="selector-overlay" value={provider} onChange={e => setProvider(e.target.value)}>
+                          <option value="gemini">Gemini {aiStatus.gemini?.available ? '✅' : '❌'}</option>
+                          <option value="vertexai">Vertex AI {aiStatus.vertexai?.available ? '✅' : '❌'}</option>
+                          <option value="ollama">Ollama {aiStatus.ollama?.available ? '✅' : '❌'}</option>
                         </select>
-                        <ChevronDown size={12} />
                     </div>
 
+                    {/* Model selector */}
                     <div className="selector-btn">
-                        <Layout size={14} />
-                        <select value={model} onChange={e => setModel(e.target.value)} style={{ maxWidth: '120px' }}>
-                        {models.length > 0 ? (
-                            models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
-                        ) : (
-                            <option value="">Đang tải...</option>
-                        )}
+                        <Layout size={13} />
+                        <span className="selector-label" style={{ maxWidth: 110 }}>
+                          {models.find(m => m.id === model)?.label || (models.length === 0 ? 'Đang tải…' : model.split('/').pop() || '—')}
+                        </span>
+                        <ChevronDown size={11} />
+                        <select className="selector-overlay" value={model} onChange={e => setModel(e.target.value)}>
+                          {models.length > 0
+                            ? models.map(m => <option key={m.id} value={m.id}>{m.label}</option>)
+                            : <option value="">Đang tải...</option>}
                         </select>
-                        <ChevronDown size={12} />
                     </div>
 
                     <div style={{ width: 1, height: 16, background: '#e2e8f0', margin: '0 4px' }} />
@@ -389,31 +436,20 @@ export const ResearchView: React.FC = () => {
 
         {!isExecutingDeep && (
           <div className="sources-section">
-            <div className="sidebar-tabs" style={{ display: 'flex', borderBottom: '1px solid var(--border)', background: '#fff' }}>
-              <button className={`tab-btn ${rightPanelTab === 'history' ? 'active' : ''}`} onClick={() => setRightPanelTab('history')} style={{ flex: 1, padding: '12px', border: 'none', background: 'none', fontSize: '0.85rem', fontWeight: 600, color: rightPanelTab === 'history' ? 'var(--primary)' : 'var(--text-secondary)', borderBottom: rightPanelTab === 'history' ? '2px solid var(--primary)' : 'none', borderRadius: '12px 12px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <Clock size={14} /> Lịch sử
-              </button>
-              <button className={`tab-btn ${rightPanelTab === 'sources' ? 'active' : ''}`} onClick={() => setRightPanelTab('sources')} style={{ flex: 1, padding: '12px', border: 'none', background: 'none', fontSize: '0.85rem', fontWeight: 600, color: rightPanelTab === 'sources' ? 'var(--primary)' : 'var(--text-secondary)', borderBottom: rightPanelTab === 'sources' ? '2px solid var(--primary)' : 'none', borderRadius: '12px 12px 0 0', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
-                <Globe size={14} /> Nguồn [{currentSources.length}]
-              </button>
+            <div className="sources-header">
+              <h3><Clock size={14} /> Lịch sử</h3>
             </div>
-            <div className="sources-list" style={{ flex: 1, overflowY: 'auto' }}>
-              {rightPanelTab === 'history' ? (
-                historyItems.map(item => (
-                  <div key={item.id} className="history-item-card" onClick={() => handleLoadHistory(item)} style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 12, margin: '8px 12px', cursor: 'pointer', background: 'white' }}>
-                    <div style={{ fontSize: '0.65rem', color: '#94a3b8', marginBottom: 4 }}>{new Date(item.timestamp).toLocaleDateString()}</div>
-                    <div style={{ fontSize: '0.8125rem', fontWeight: 600, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.query}</div>
-                  </div>
-                ))
-              ) : (
-                currentSources.map(src => (
-                  <div key={src.id} className={`source-item-card ${selectedSourceId === src.id ? 'active' : ''}`} onClick={() => { if (src.url) window.open(src.url, '_blank'); setSelectedSourceId(src.id); }} style={{ margin: '8px 12px' }}>
-                    <div className="source-id">NGUỒN [{src.id}]</div>
-                    <div className="source-title">{src.title}</div>
-                    <div className="source-snippet">{src.content}</div>
-                  </div>
-                ))
-              )}
+            <div className="sources-list">
+              {historyItems.length === 0 ? (
+                <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--text-tertiary)', fontSize: '0.8rem' }}>
+                  Chưa có lịch sử.
+                </div>
+              ) : historyItems.map(item => (
+                <div key={item.id} className="history-item-card" onClick={() => handleLoadHistory(item)}>
+                  <div className="history-item-date">{new Date(item.timestamp).toLocaleDateString('vi-VN')}</div>
+                  <div className="history-item-query">{item.query}</div>
+                </div>
+              ))}
             </div>
           </div>
         )}

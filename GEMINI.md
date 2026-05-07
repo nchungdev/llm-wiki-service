@@ -125,3 +125,28 @@ Hỗ trợ đa client đồng thời với cơ chế **Smart Fallback** và **Dy
 - **Ollama:** Dùng cho xử lý Local tiết kiệm chi phí.
 
 Hệ thống sẽ tự động thử qua các provider khả dụng nếu provider chính bị lỗi kết nối hoặc không tìm thấy model.
+
+### Quy tắc bắt buộc — Model Discovery & Availability
+
+**1. Luôn lấy danh sách model động qua API của provider, không hardcode.**
+
+- Mỗi provider có SDK / endpoint riêng để liệt kê model khả dụng. Phải dùng đúng API đó, không tự điền tên model vào code.
+- **Gemini Studio:** dùng sync iterator `for m in client.models.list()` — *không* dùng `client.aio.models.list()` vì nó trả về coroutine thay vì async iterator.
+- **Vertex AI:** dùng sync iterator `for m in client.models.list()` với full path `publishers/google/models/<name>`.
+- **Ollama:** dùng `GET /api/tags`.
+- Lọc bỏ các model không dùng được cho text generation (embedding, tts, image, audio, computer-use...) ngay tại tầng discovery.
+
+**2. Luôn kiểm tra tính sẵn sàng của provider và model, ưu tiên lựa chọn của user.**
+
+- Khởi tạo `provider` và `model` từ cấu hình hệ thống (`SystemConfig.ai.provider` / `SystemConfig.ai.model`). Không hardcode giá trị mặc định ở tầng UI — UI chỉ được render sau khi đã đọc config xong.
+- Trước khi thực thi, kiểm tra provider do user chọn có khả dụng không (`check_availability`). Nếu không, mới thử fallback sang provider khác theo thứ tự ưu tiên; không tự ý đổi provider mà không có lý do.
+- Khi fetch danh sách model về, giữ nguyên model đang chọn nếu nó có trong danh sách; chỉ tự động chọn model đầu tiên nếu model cũ không còn khả dụng.
+- Nếu gọi API gặp lỗi 404 / NOT_FOUND, thực hiện re-discovery ngay lập tức và thử lại với model kế tiếp phù hợp — không để lỗi trả về client nếu còn model thay thế.
+
+**3. Cache danh sách model, prefetch khi app khởi động.**
+
+- Kết quả `get_available_models` phải được cache với **expire time 1 giờ**. Không gọi lại API provider mỗi lần UI mở dropdown hay gửi request.
+- Cache key theo `provider` (ví dụ: `_model_cache = { "gemini": {"models": [...], "fetched_at": timestamp} }`). Khi đọc cache, nếu `now - fetched_at > 3600s` thì refetch.
+- **Khi app khởi động**, backend phải chủ động prefetch và cache model list cho **cả 3 provider** (`gemini`, `vertexai`, `ollama`) — không chờ user thao tác mới gọi. Điều này đảm bảo lần đầu tiên UI hiển thị dropdown đã có dữ liệu sẵn, không bị loading.
+- Nếu một provider không khả dụng lúc prefetch (không có API key, Ollama chưa chạy...), bỏ qua silently — không để lỗi prefetch block quá trình khởi động app.
+- Khi có lỗi 404 trong lúc gọi thực tế và thực hiện re-discovery, kết quả mới phải cập nhật lại cache (reset `fetched_at`) để lần sau không dùng lại danh sách cũ đã lỗi thời.

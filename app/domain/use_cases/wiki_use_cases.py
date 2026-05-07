@@ -35,8 +35,8 @@ class ReindexWikiUseCase:
         if not self.rag_service:
             return
         
-        logger.info("🔍 Re-indexing all wiki pages...")
-        pages = await self.wiki_repo.list_pages()
+        logger.info("🔍 Re-indexing all wiki pages (including uncategorized)...")
+        pages = await self.wiki_repo.list_all_pages()
         for p in pages:
             filename = p['filename']
             if filename != "index.md":

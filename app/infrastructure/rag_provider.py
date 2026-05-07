@@ -6,10 +6,17 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
+# Provider-specific default embedding models (used when discovery fails or returns empty)
+_EMBED_DEFAULTS = {
+    "gemini":   "models/text-embedding-004",
+    "vertexai": "text-embedding-004",
+}
+
 class GeminiEmbeddingFunction(EmbeddingFunction):
     def __init__(self, api_key: str = None, provider_type: str = None, model_name: str = None,
                  gcp_project: str = None, gcp_location: str = None, gcp_key_file: str = None):
-        
+
         self.provider_type = provider_type or os.getenv("AI_PROVIDER", "ollama")
         self.ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
         self.api_key = api_key
@@ -17,6 +24,9 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
         self.gcp_location = gcp_location
         self.gcp_key_file = gcp_key_file
         self.model_name = model_name
+
+        # Per-provider model cache so discovery runs only once per session
+        self._resolved_model: dict[str, str] = {}
 
         self.clients = {}
         self.is_fallback = False
@@ -71,17 +81,54 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
             logger.error("All embedding attempts failed. Returning zero vectors.")
             return [[0.0] * 768 for _ in range(len(input))]
 
+    async def _resolve_embed_model(self, provider: str, client) -> str:
+        """Return cached embed model, or discover once then cache it."""
+        # Already resolved this session
+        if provider in self._resolved_model:
+            return self._resolved_model[provider]
+
+        # Explicit model set by user config (skip if it's an Ollama-only model)
+        if self.model_name and "nomic" not in self.model_name and "llama" not in self.model_name:
+            self._resolved_model[provider] = self.model_name
+            logger.info(f"📌 Using configured embed model for {provider}: {self.model_name}")
+            return self.model_name
+
+        logger.info(f"🔍 Discovering embed model for {provider}…")
+        try:
+            # Run sync list() in thread pool to avoid blocking the event loop
+            import asyncio
+            models_list = await asyncio.to_thread(lambda: list(client.models.list()))
+            discovered = [
+                m.name for m in models_list
+                if hasattr(m, 'supported_generation_methods')
+                and 'embedContent' in (m.supported_generation_methods or [])
+            ]
+            if discovered:
+                # Prefer models with "embedding" in name
+                model = next((m for m in discovered if "embedding" in m.lower()), discovered[0])
+                logger.info(f"✅ Discovered embed model for {provider}: {model}")
+                self._resolved_model[provider] = model
+                return model
+        except Exception as e:
+            logger.warning(f"⚠️ Model discovery failed for {provider}: {e}")
+
+        # Fall back to known-good defaults
+        default = _EMBED_DEFAULTS.get(provider)
+        if default:
+            logger.info(f"⚡ Using default embed model for {provider}: {default}")
+            self._resolved_model[provider] = default
+            return default
+
+        raise ValueError(f"Cannot determine embedding model for provider '{provider}'. "
+                         f"Set embed_model in config or ensure the provider API is reachable.")
+
     async def _call_embed(self, provider: str, input: Documents):
         if provider in ("gemini", "vertexai"):
             client = self.clients.get(provider)
-            if not client: raise ValueError("Client not ready")
-            
-            # 1. Clean model name
-            model = self.model_name or "text-embedding-004"
-            if "nomic" in model or "llama" in model:
-                model = "text-embedding-004"
-            
-            logger.info(f"📊 Requesting embedding from {provider} (model: {model})...")
+            if not client: raise ValueError(f"Client not ready for provider '{provider}'")
+
+            model = await self._resolve_embed_model(provider, client)
+            logger.debug(f"📊 Embedding via {provider} (model: {model}), {len(input)} docs")
 
             try:
                 result = await client.aio.models.embed_content(
@@ -91,34 +138,44 @@ class GeminiEmbeddingFunction(EmbeddingFunction):
                 )
                 return [e.values for e in result.embeddings]
             except Exception as e:
-                # If 404, attempt dynamic discovery
+                # On 404 the cached model may be stale — clear cache and retry once
                 if "404" in str(e):
-                    logger.warning(f"⚠️ Embedding model {model} not found (404). Discovering available models...")
+                    logger.warning(f"⚠️ Embed model {model} returned 404. Clearing cache and retrying…")
+                    self._resolved_model.pop(provider, None)
+                    if self.model_name == model:
+                        self.model_name = ''          # allow re-discovery
                     try:
-                        available = []
-                        async for m in client.aio.models.list():
-                            if 'embedContent' in m.supported_generation_methods:
-                                available.append(m.name)
-                        
-                        if available:
-                            fallback = next((m for m in available if "embedding" in m.lower()), available[0])
-                            logger.info(f"🔄 Dynamic fallback embedding: {fallback}")
+                        model2 = await self._resolve_embed_model(provider, client)
+                        if model2 != model:
                             result = await client.aio.models.embed_content(
-                                model=fallback,
+                                model=model2,
                                 contents=input,
                                 config={'task_type': 'RETRIEVAL_DOCUMENT'}
                             )
                             return [e.values for e in result.embeddings]
-                        else: raise e
-                    except: raise e
+                    except Exception as e2:
+                        raise e2
                 raise e
         else:
             # Ollama
             import httpx
             model = self.model_name
-            # If model_name is a Google model, override for Ollama
+            # If model_name is a Google/Gemini model (not applicable to Ollama), discover via API
             if not model or "text-embedding" in model or "gemini" in model:
-                model = "nomic-embed-text"
+                try:
+                    async with httpx.AsyncClient(timeout=5.0) as probe:
+                        tags = (await probe.get(f"{self.ollama_host}/api/tags")).json()
+                    all_models = [m["name"] for m in tags.get("models", [])]
+                    # Prefer an explicit embed model; fall back to first available
+                    embed_candidates = [m for m in all_models if "embed" in m.lower() or "nomic" in m.lower()]
+                    model = embed_candidates[0] if embed_candidates else (all_models[0] if all_models else None)
+                    if not model:
+                        raise ValueError("No Ollama models found for embedding. Please pull an embed model (e.g. `ollama pull nomic-embed-text`).")
+                    logger.info(f"✅ Auto-selected Ollama embed model: {model}")
+                except ValueError:
+                    raise
+                except Exception as e:
+                    raise ValueError(f"Could not discover Ollama embedding model: {e}")
             
             async with httpx.AsyncClient(timeout=60.0) as client:
                 embeddings = []

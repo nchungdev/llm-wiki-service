@@ -47,6 +47,15 @@ def create_router(
 ):
     router = APIRouter()
 
+    # Background task registry (for cancel/stop support)
+    import asyncio as _asyncio
+    _bg_tasks: list[_asyncio.Task] = []
+
+    def _register_bg_task(task: _asyncio.Task):
+        _bg_tasks.append(task)
+        # Auto-clean completed tasks to avoid memory leak
+        task.add_done_callback(lambda t: _bg_tasks.remove(t) if t in _bg_tasks else None)
+
     # --- Wiki Library ---
     @router.get("/pages")
     async def list_pages():
@@ -120,10 +129,96 @@ def create_router(
         from app.domain.use_cases.wiki_use_cases import ReindexWikiUseCase
         from app.core.container import container
         use_case = ReindexWikiUseCase(container.wiki_repo, container.rag_service)
-        # Run in background to not block API
         import asyncio
-        asyncio.create_task(use_case.execute())
+        task = asyncio.create_task(use_case.execute())
+        _register_bg_task(task)
         return {"status": "success", "message": "Re-indexing started in background"}
+
+    @router.post("/pipeline/stop")
+    async def pipeline_stop():
+        """Cancel all tracked background tasks and reset pipeline running state."""
+        import asyncio
+        cancelled = 0
+        for task in list(_bg_tasks):
+            if not task.done():
+                task.cancel()
+                cancelled += 1
+        _bg_tasks.clear()
+
+        # Also reset pipeline running flag via container if possible
+        try:
+            from app.core.container import container
+            if hasattr(container, 'pipeline_status'):
+                container.pipeline_status['crawl']['running'] = False
+                container.pipeline_status['cook']['running'] = False
+        except Exception:
+            pass
+
+        return {"status": "stopped", "cancelled": cancelled}
+
+    @router.get("/system/health")
+    async def system_health():
+        """Single endpoint returning health snapshot for all subsystems."""
+        from app.core.container import container
+        result: dict = {}
+
+        # --- Pipeline ---
+        try:
+            result['pipeline'] = {
+                'crawl_running': pipeline_use_case.crawl_status.get('running', False) if pipeline_use_case else False,
+                'cook_running': run_cook_use_case.status.get('running', False) if run_cook_use_case else False,
+            }
+        except Exception as e:
+            result['pipeline'] = {'crawl_running': False, 'cook_running': False, 'error': str(e)}
+
+        # --- RAG ---
+        try:
+            rag = container.rag_service
+            if rag:
+                all_pages = await container.wiki_repo.list_all_pages()
+                vault_total = len(all_pages)
+                indexed = rag.collection.count()
+                coverage = round(indexed / vault_total * 100, 1) if vault_total > 0 else 0
+                ef = rag.embedding_fn
+                result['rag'] = {
+                    'available': True,
+                    'indexed': indexed,
+                    'vault_total': vault_total,
+                    'coverage_pct': coverage,
+                    'embed_provider': ef.provider_type if not ef.is_fallback else 'ollama (fallback)',
+                }
+            else:
+                result['rag'] = {'available': False, 'reason': 'RAG not initialized'}
+        except Exception as e:
+            result['rag'] = {'available': False, 'reason': str(e)}
+
+        # --- Inbox ---
+        try:
+            from app.domain.use_cases.vault_audit_use_cases import VaultInboxUseCase
+            uc = VaultInboxUseCase(container.config.storage.vault_dir)
+            inbox = await uc.get_inbox()
+            result['inbox'] = {'count': len(inbox)}
+        except Exception as e:
+            result['inbox'] = {'count': 0, 'error': str(e)}
+
+        # --- Vault ---
+        try:
+            if vault_audit_use_case:
+                report = await vault_audit_use_case.run()
+                counts = report.get('counts', {})
+                critical = (counts.get('no_score', 0) + counts.get('low_score', 0)
+                            + counts.get('broken_links', 0) + counts.get('old_structure', 0))
+                result['vault'] = {
+                    'total': report.get('total', 0),
+                    'critical_issues': critical,
+                    'counts': counts,
+                }
+            else:
+                result['vault'] = {'error': 'Vault audit not configured'}
+        except Exception as e:
+            result['vault'] = {'error': str(e)}
+
+        return result
 
     @router.get("/pipeline/history")
     async def get_pipeline_history():
@@ -308,7 +403,143 @@ def create_router(
             return await vault_cleanup_use_case.rescore_unscored()
         elif action == "delete_duplicates":
             return await vault_cleanup_use_case.delete_duplicates()
+        elif action == "fix_broken_links":
+            return await vault_cleanup_use_case.fix_broken_links()
+        elif action == "delete_unsafe_orphans":
+            threshold = int(payload.get("threshold", 4))
+            return await vault_cleanup_use_case.delete_unsafe_orphans(threshold)
         raise HTTPException(status_code=400, detail=f"Unknown action: {action}")
+
+    @router.get("/vault/library")
+    async def vault_library():
+        """Return all vault notes with extended metadata for the library browser."""
+        from app.core.container import container
+        pages = await container.wiki_repo.list_all_pages()
+        return {"pages": pages, "total": len(pages)}
+
+    # --- Vault Inbox ---
+    @router.get("/vault/inbox")
+    async def vault_inbox():
+        """Return all unprocessed notes (manually added, missing AI metadata)."""
+        from app.core.container import container
+        from app.domain.use_cases.vault_audit_use_cases import VaultInboxUseCase
+        uc = VaultInboxUseCase(
+            container.config.storage.vault_dir,
+            ai_provider=container.ai_provider,
+            rag_service=container.rag_service,
+        )
+        items = await uc.get_inbox()
+        return {"items": items, "total": len(items)}
+
+    @router.post("/vault/inbox/process")
+    async def vault_inbox_process(payload: dict):
+        """Start background batch processing. Returns task_id for polling."""
+        import uuid
+        from app.core.container import container
+        from app.domain.use_cases.vault_audit_use_cases import VaultInboxUseCase
+
+        uc = VaultInboxUseCase(
+            container.config.storage.vault_dir,
+            ai_provider=container.ai_provider,
+            rag_service=container.rag_service,
+        )
+        paths = payload.get("paths")   # None = process all inbox
+        task_id = str(uuid.uuid4())[:8]
+
+        import asyncio
+        task = asyncio.create_task(uc.process_batch(task_id, paths))
+        _register_bg_task(task)
+
+        # Store reference so status endpoint can reach it
+        if not hasattr(vault_inbox_process, '_tasks'):
+            vault_inbox_process._tasks = {}
+        vault_inbox_process._tasks[task_id] = uc
+
+        return {"task_id": task_id, "status": "started"}
+
+    @router.get("/vault/inbox/status/{task_id}")
+    async def vault_inbox_status(task_id: str):
+        """Poll progress of a running or completed batch."""
+        tasks = getattr(vault_inbox_process, '_tasks', {})
+        uc = tasks.get(task_id)
+        if not uc:
+            raise HTTPException(status_code=404, detail="Task not found")
+        progress = uc.get_progress(task_id)
+        if not progress:
+            raise HTTPException(status_code=404, detail="Task not started yet")
+        return progress
+
+    @router.post("/vault/inbox/apply")
+    async def vault_inbox_apply(payload: dict):
+        """Apply a single previewed plan that was pending user review."""
+        from app.core.container import container
+        from app.domain.use_cases.vault_audit_use_cases import VaultInboxUseCase
+
+        plan = payload.get("plan")
+        if not plan:
+            raise HTTPException(status_code=400, detail="plan required")
+
+        uc = VaultInboxUseCase(
+            container.config.storage.vault_dir,
+            ai_provider=container.ai_provider,
+            rag_service=container.rag_service,
+        )
+        result = await uc.apply_plan(plan)
+        return result
+
+    @router.post("/vault/bulk-delete")
+    async def vault_bulk_delete(payload: dict):
+        """Delete multiple notes by filename list."""
+        from app.core.container import container
+        filenames = payload.get("filenames", [])
+        if not filenames:
+            return {"deleted": 0, "errors": []}
+        result = await container.wiki_repo.bulk_delete(filenames)
+        return result
+
+    # --- RAG Status ---
+    @router.get("/rag/status")
+    async def rag_status():
+        """Return RAG index health: indexed count, vault total, coverage %, embed provider."""
+        from app.core.container import container
+        try:
+            # Total vault notes
+            all_pages = await container.wiki_repo.list_all_pages()
+            vault_total = len(all_pages)
+
+            # RAG index count
+            rag = container.rag_service
+            if rag is None:
+                return {
+                    "available": False,
+                    "reason": "RAG service not initialized",
+                    "indexed": 0,
+                    "vault_total": vault_total,
+                    "coverage_pct": 0,
+                    "embed_provider": None,
+                    "embed_model": None,
+                }
+
+            indexed = rag.collection.count()
+            coverage = round(indexed / vault_total * 100, 1) if vault_total > 0 else 0
+
+            # Embed provider info
+            ef = rag.embedding_fn
+            embed_provider = ef.provider_type if not ef.is_fallback else "ollama (fallback)"
+            embed_model = ef.model_name or "auto-discover"
+
+            return {
+                "available": True,
+                "indexed": indexed,
+                "vault_total": vault_total,
+                "coverage_pct": coverage,
+                "embed_provider": embed_provider,
+                "embed_model": embed_model,
+                "db_path": rag.db_path,
+            }
+        except Exception as e:
+            logger.error(f"RAG status error: {e}")
+            return {"available": False, "reason": str(e), "indexed": 0, "vault_total": 0, "coverage_pct": 0}
 
     # --- AI & Chat ---
     @router.post("/chat", response_model=ChatResponse)
@@ -378,8 +609,7 @@ def create_router(
         url = payload.get("url")
         if not url: raise HTTPException(status_code=400, detail="URL is required")
         try:
-            # 1. Inspect to get name/type
-            from app.presentation.api.routes import inspect_source
+            # 1. Call local function directly
             info = await inspect_source({"url": url})
             if info.get("status") == "error":
                 info = {"name": url.split("//")[-1][:30], "url": url, "type": "web", "category": "General"}

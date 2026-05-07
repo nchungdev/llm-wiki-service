@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 import { Sidebar } from './presentation/layouts/Sidebar';
-import { RefreshCw, Play, FileText, Inbox } from 'lucide-react';
+import { FileText, Inbox } from 'lucide-react';
 import { usePipelineStore } from './application/store/usePipelineStore';
+import { SystemHealthWidget } from './presentation/components/SystemHealthWidget';
 
 import { DashboardView } from './presentation/views/DashboardView';
 import { ManageSourcesView } from './presentation/views/ManageSourcesView';
@@ -104,16 +105,11 @@ function App() {
           {renderHeaderLeft()}
 
           <div className="header-actions">
-            {isPipelineRunning ? (
-              <div className="sync-indicator">
-                <RefreshCw className="animate-spin" size={14} />
-                <span>Pipeline đang chạy…</span>
-              </div>
-            ) : (
-              <button className="btn btn-primary btn-sm" onClick={() => triggerSync()}>
-                <Play size={13} /> Run Sync
-              </button>
-            )}
+            <SystemHealthWidget
+              isPipelineRunning={isPipelineRunning}
+              onNavigate={setCurrentView}
+              onRunSync={() => triggerSync()}
+            />
           </div>
         </header>
 

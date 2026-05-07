@@ -53,17 +53,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, col
     <aside className={cn('sidebar', collapsed && 'sidebar-collapsed')}>
       {/* Logo + collapse toggle */}
       <div className="sidebar-header">
-        <div className="logo">
-          <Library className="logo-icon" />
-          {!collapsed && <span>AI Librarian</span>}
-        </div>
-        <button
-          className="sidebar-collapse-btn"
-          onClick={onToggleCollapse}
-          title={collapsed ? 'Mở rộng sidebar' : 'Thu gọn sidebar'}
-        >
-          {collapsed ? <PanelLeftOpen size={15} /> : <PanelLeftClose size={15} />}
-        </button>
+        {collapsed ? (
+          /* Collapsed: only the expand button, centered like nav icons */
+          <button
+            className="sidebar-collapse-btn sidebar-collapse-btn--centered"
+            onClick={onToggleCollapse}
+            title="Mở rộng sidebar"
+          >
+            <PanelLeftOpen size={15} />
+          </button>
+        ) : (
+          <>
+            <div
+              className="logo"
+              onClick={() => onViewChange('dashboard')}
+              title="Về trang chủ"
+            >
+              <Library className="logo-icon" />
+              <span>AI Librarian</span>
+            </div>
+            <button
+              className="sidebar-collapse-btn"
+              onClick={onToggleCollapse}
+              title="Thu gọn sidebar"
+            >
+              <PanelLeftClose size={15} />
+            </button>
+          </>
+        )}
       </div>
 
       {/* Navigation */}

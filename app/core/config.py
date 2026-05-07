@@ -13,8 +13,8 @@ class StorageConfig(BaseModel):
 
 class AIConfig(BaseModel):
     provider: str = "ollama"
-    model: str = "llama3.1:8b"
-    embed_model: str = "nomic-embed-text"
+    model: str = ""          # empty = auto-discover on first call
+    embed_model: str = ""    # empty = auto-discover on first call
     max_rpm: int = 15
     max_tpm: int = 30000
 
