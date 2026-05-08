@@ -29,6 +29,7 @@ class AIProvider:
         self.limiter = AsyncRateLimiter(max_rpm, max_tpm)
         self.clients: dict = {}
         self.is_fallback = False
+        self._failed_models: dict[str, set] = {}  # provider -> set of model IDs that returned 404
         self._init_clients()
 
         if not self._models.get(self.provider_type):
@@ -135,7 +136,8 @@ class AIProvider:
     # ── Internal call helpers ───────────────────────────────────────────────────
 
     async def _resolve_google_model(self, provider: str) -> str:
-        """Resolve and cache the best available model for a Google provider (gemini/vertexai)."""
+        """Resolve and cache the best available model for a Google provider (gemini/vertexai).
+        Skips models that previously returned 404 for this provider."""
         cached = self._get_model(provider)
         if cached:
             return cached
@@ -144,9 +146,18 @@ class AIProvider:
         available = await self.get_available_models(provider)
         if not available:
             raise ValueError(f"No models available on {provider}")
+
+        failed = self._failed_models.get(provider, set())
+        candidates = [m for m in available if m["id"] not in failed]
+        if not candidates:
+            # All discovered models failed — reset and try fresh
+            logger.warning(f"⚠️ All discovered {provider} models failed. Resetting failure list.")
+            self._failed_models.pop(provider, None)
+            candidates = available
+
         best = next(
-            (m["id"] for m in available if "flash" in m["id"].lower() and "preview" not in m["id"].lower()),
-            available[0]["id"]
+            (m["id"] for m in candidates if "flash" in m["id"].lower() and "preview" not in m["id"].lower()),
+            candidates[0]["id"]
         )
         self._set_model(provider, best)
         return best
@@ -165,19 +176,11 @@ class AIProvider:
                 response = await client.aio.models.generate_content(model=model, contents=prompt)
             except Exception as e:
                 if "404" in str(e) or "NOT_FOUND" in str(e):
-                    logger.warning(f"⚠️ Model {model} not found on {provider}. Re-discovering...")
-                    self._models.pop(provider, None)  # clear cache
-                    available = await self.get_available_models(provider)
-                    if available:
-                        new_model = next(
-                            (m["id"] for m in available if "flash" in m["id"].lower()
-                             and "preview" not in m["id"].lower() and m["id"] != model),
-                            available[0]["id"]
-                        )
-                        self._set_model(provider, new_model)
-                        response = await client.aio.models.generate_content(model=new_model, contents=prompt)
-                    else:
-                        raise e
+                    logger.warning(f"⚠️ Model {model} not found on {provider}. Blacklisting and re-discovering...")
+                    self._failed_models.setdefault(provider, set()).add(model)
+                    self._models.pop(provider, None)
+                    new_model = await self._resolve_google_model(provider)
+                    response = await client.aio.models.generate_content(model=new_model, contents=prompt)
                 else:
                     raise e
 
@@ -214,21 +217,14 @@ class AIProvider:
                 )
             except Exception as e:
                 if "404" in str(e) or "NOT_FOUND" in str(e):
-                    logger.warning(f"⚠️ Model {model} not found on {provider}. Re-discovering...")
+                    logger.warning(f"⚠️ Model {model} not found on {provider}. Blacklisting and re-discovering...")
+                    self._failed_models.setdefault(provider, set()).add(model)
                     self._models.pop(provider, None)
-                    available = await self.get_available_models(provider)
-                    if available:
-                        new_model = next(
-                            (m["id"] for m in available if "flash" in m["id"].lower() and m["id"] != model),
-                            available[0]["id"]
-                        )
-                        self._set_model(provider, new_model)
-                        response = await client.aio.models.generate_content(
-                            model=new_model, contents=prompt,
-                            config={'response_mime_type': 'application/json'}
-                        )
-                    else:
-                        raise e
+                    new_model = await self._resolve_google_model(provider)
+                    response = await client.aio.models.generate_content(
+                        model=new_model, contents=prompt,
+                        config={'response_mime_type': 'application/json'}
+                    )
                 else:
                     raise e
 
@@ -311,7 +307,8 @@ class AIProvider:
             return self
         import copy
         clone = copy.copy(self)
-        clone._models = dict(self._models)  # own copy so writes don't bleed back
+        clone._models = dict(self._models)
+        clone._failed_models = {k: set(v) for k, v in self._failed_models.items()}
         if provider_type:
             clone.provider_type = provider_type
             clone.is_fallback = provider_type in ("gemini", "vertexai") and provider_type not in self.clients
@@ -365,11 +362,15 @@ class AIProvider:
                 logger.error(f"Error fetching Gemini models: {e}")
 
         if target == "vertexai" and "vertexai" in self.clients:
+            import re as _re
             try:
                 for m in self.clients["vertexai"].models.list():
                     name = m.name  # "publishers/google/models/gemini-1.5-flash"
+                    label = name.split("/")[-1]
+                    # Skip versioned models (e.g. gemini-2.0-flash-001) — not available in all projects
+                    if _re.search(r'-\d{3}$', label):
+                        continue
                     if "gemini" in name and not any(x in name for x in ("embedding", "tts", "image", "audio", "computer")):
-                        label = name.split("/")[-1]
                         models.append({"id": name, "label": label})
             except Exception as e:
                 logger.error(f"Error fetching Vertex models: {e}")

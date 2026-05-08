@@ -7,6 +7,8 @@ import {
 } from 'lucide-react';
 import { AdminApi } from '../../infrastructure/api/AdminApi';
 import type { ChatResponse } from '../../domain/entities';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import '../styles/ResearchView.css';
 
 interface Message {
@@ -179,26 +181,63 @@ export const ResearchView: React.FC = () => {
 
   const handleSaveToWiki = async (index: number, text: string) => {
     const userMsg = messages.slice(0, index).reverse().find(m => m.role === 'user');
-    const title = prompt('Nhập tiêu đề:', userMsg ? `Nghiên cứu: ${userMsg.text}` : 'Ghi chú nghiên cứu');
+    const defaultTitle = userMsg ? userMsg.text.replace(/[<>:"/\\|?*]/g, '').slice(0, 50) : 'Ghi chú nghiên cứu';
+    const title = prompt('Nhập tiêu đề:', defaultTitle);
     if (!title) return;
+
+    // Build rich frontmatter for proper classification in Obsidian
+    const now = new Date();
+    const frontmatter = [
+      '---',
+      `title: "${title.replace(/"/g, '\\"')}"`,
+      'category: "Knowledge/Nghiên cứu"',
+      `created: ${now.toISOString()}`,
+      'knowledge_type: "Research"',
+      '---',
+      '',
+      ''
+    ].join('\n');
+
     try {
-      await AdminApi.saveWikiPage({ title, content: text });
+      await AdminApi.saveWikiPage({ 
+        title, 
+        content: frontmatter + text 
+      });
       setSavedIds(prev => new Set(prev).add(index));
     } catch { alert('Lỗi khi lưu vào Wiki.'); }
   };
 
   const currentSources = messages.filter(m => m.role === 'ai' && m.sources?.length).slice(-1)[0]?.sources || [];
 
-  const renderText = (text: string) =>
-    text.split(/(\[\d+\])/g).map((part, i) => {
-      const m = part.match(/\[(\d+)\]/);
-      if (m) return (
-        <button key={i} className="rv-citation" onClick={() => setSelectedSourceId(parseInt(m[1]))}>
-          {part}
-        </button>
-      );
-      return <span key={i} style={{ whiteSpace: 'pre-wrap' }}>{part}</span>;
-    });
+  const renderText = (text: string) => {
+    // Process citations [n] to make them clickable but within Markdown flow
+    return (
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          // We can't easily intercept text nodes for [n] without a plugin
+          // So we pre-process the text below
+          p: ({ children }) => <p className="rv-md-p">{children}</p>,
+          a: ({ href, children }) => {
+            if (href?.startsWith('#cite-')) {
+              const id = href.replace('#cite-', '');
+              return (
+                <button
+                  className="rv-citation"
+                  onClick={(e) => { e.preventDefault(); setSelectedSourceId(parseInt(id)); }}
+                >
+                  [{id}]
+                </button>
+              );
+            }
+            return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+          }
+        }}
+      >
+        {text.replace(/\[(\d+)\]/g, '[[ $1 ]](#cite-$1)')}
+      </ReactMarkdown>
+    );
+  };
 
   return (
     <div className="view-panel active no-pad">

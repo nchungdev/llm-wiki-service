@@ -75,10 +75,14 @@ Sources (RSS/Web/YT/Wiki)
     ↓ RunDailyCrawlUseCase
 SYSTEM_DIR/raw/crawl/*.json   ← raw data (local only)
     ↓ RunCookUseCase (AI triage + transform)
-VAULT_DIR/10-Knowledge/{category}/{date}/*.md   ← Obsidian vault
+VAULT_DIR/Knowledge/{category}/{date}/*.md   ← Obsidian vault
     ↓ RAGService (ChromaDB)
 SYSTEM_DIR/chroma_db/   ← vector index (local only)
 ```
+
+### Knowledge Classification
+- **Nghiên cứu (Research)**: Lưu tại `Knowledge/Nghiên cứu/`. Tự động chèn YAML Frontmatter (`category`, `created`, `knowledge_type`).
+- **Tri thức (Cooked)**: Lưu tại `Knowledge/{folder_category}/`. Phân loại tự động bởi AI.
 
 ---
 
@@ -121,8 +125,10 @@ Hệ thống sử dụng mô hình "Human-in-the-loop" để tối ưu chi phí 
 - **Smart Input**: Ô nhập liệu phong cách Gemini với bộ chọn AI Provider (Ollama, Gemini, Vertex AI) và Model ngay tại chỗ.
 - **Source Filtering**: Cho phép giới hạn không gian tìm kiếm: `Tất cả`, `Chỉ Wiki`, hoặc `Chỉ Web`.
 - **Dynamic Layout**: 
-  - **Bình thường**: Chat bên trái, Sidebar (Lịch sử/Nguồn) bên phải có thể thu gọn (Collapsible).
+  - **Bình thường**: Chat trung tâm, Sidebar (Lịch sử) bên trái, **Sources Panel** bên phải (có thể thu gọn/mở rộng).
   - **Khi nghiên cứu**: Tự động chuyển sang giao diện toàn màn hình, hiển thị **Progress Panel** với skeleton loading và tiến trình tư duy chi tiết.
+- **Rich Text Rendering**: Hỗ trợ Markdown đầy đủ (Header, List, Table, Code block) qua `react-markdown`.
+- **Interactive Citations**: Các nguồn tham khảo `[n]` có thể click để mở chi tiết nguồn bên Sources Panel.
 - **Retry Logic**: Hỗ trợ nút **"Thử lại"** ngay trong tin nhắn nếu gặp lỗi API hoặc mạng.
 
 ### Infrastructure & Persistence
@@ -165,3 +171,19 @@ Hệ thống sẽ tự động thử qua các provider khả dụng nếu provid
 - **Khi app khởi động**, backend phải chủ động prefetch và cache model list cho **cả 3 provider** (`gemini`, `vertexai`, `ollama`) — không chờ user thao tác mới gọi. Điều này đảm bảo lần đầu tiên UI hiển thị dropdown đã có dữ liệu sẵn, không bị loading.
 - Nếu một provider không khả dụng lúc prefetch (không có API key, Ollama chưa chạy...), bỏ qua silently — không để lỗi prefetch block quá trình khởi động app.
 - Khi có lỗi 404 trong lúc gọi thực tế và thực hiện re-discovery, kết quả mới phải cập nhật lại cache (reset `fetched_at`) để lần sau không dùng lại danh sách cũ đã lỗi thời.
+
+---
+
+## System Administration & Settings
+
+Giao diện quản trị được hợp nhất để tối ưu hóa việc vận hành hệ thống.
+
+### Unified Settings Hub
+Truy cập qua biểu tượng bánh răng (Gear icon) ở Sidebar footer, bao gồm 3 tab chính:
+- **Cấu hình hệ thống**: Quản lý AI Provider, API Keys, Rate Limits, và đường dẫn lưu trữ (Vault/System).
+- **Nhật ký vận hành**: Lịch sử thực thi của các phiên Pipeline (Crawl/Cook), hiển thị trạng thái, thời lượng và số lượng bài viết thu thập.
+- **Live Logs**: Xem trực tiếp log từ server để debug hoặc theo dõi tiến trình thời gian thực.
+
+### Build Optimization
+- **Code Splitting**: Sử dụng Vite manual chunks để tách biệt code ứng dụng và các thư viện nặng (React, Lucide, Markdown).
+- **Vendor Splitting**: Giảm kích thước chunk chính xuống dưới 500kB, giúp tăng tốc độ load trang và tối ưu hóa bộ nhớ trình duyệt.

@@ -88,6 +88,18 @@ function App() {
         </div>
       );
     }
+    if (currentView === 'settings' || currentView === 'pipeline-history') {
+      return (
+        <div className="tabs-header header-tabs">
+          <button className={`tab-btn ${currentView === 'settings' ? 'active' : ''}`} onClick={() => setCurrentView('settings')}>
+            Cấu hình hệ thống
+          </button>
+          <button className={`tab-btn ${currentView === 'pipeline-history' ? 'active' : ''}`} onClick={() => setCurrentView('pipeline-history')}>
+            Nhật ký vận hành
+          </button>
+        </div>
+      );
+    }
     return <h2 className="view-title">{viewTitles[currentView]}</h2>;
   };
 

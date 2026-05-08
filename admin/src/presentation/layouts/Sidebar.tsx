@@ -30,7 +30,6 @@ const navItems = [
   { id: 'dashboard',        label: 'Dashboard',          icon: LayoutDashboard },
   { id: 'research',         label: 'Nghiên cứu',         icon: MessageSquareText },
   { id: 'sync',             label: 'Pipeline Board',     icon: Activity },
-  { id: 'pipeline-history', label: 'Nhật ký vận hành',  icon: History },
   { id: 'vault',            label: 'Vault Health',       icon: ShieldCheck },
   { id: 'ebook',            label: 'Nhập Ebook',         icon: BookMarked },
 ];
@@ -128,16 +127,22 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange, col
             {showSettings && (
               <div className={cn('settings-popover', collapsed && 'popover-right')}>
                 <button
-                  className={cn('popover-item', currentView === 'logs' && 'active')}
-                  onClick={() => { onViewChange('logs'); setShowSettings(false); }}
-                >
-                  <Terminal size={15} /> Live Logs
-                </button>
-                <button
                   className={cn('popover-item', currentView === 'settings' && 'active')}
                   onClick={() => { onViewChange('settings'); setShowSettings(false); }}
                 >
                   <Settings size={15} /> Cấu hình hệ thống
+                </button>
+                <button
+                  className={cn('popover-item', currentView === 'pipeline-history' && 'active')}
+                  onClick={() => { onViewChange('pipeline-history'); setShowSettings(false); }}
+                >
+                  <History size={15} /> Nhật ký vận hành
+                </button>
+                <button
+                  className={cn('popover-item', currentView === 'logs' && 'active')}
+                  onClick={() => { onViewChange('logs'); setShowSettings(false); }}
+                >
+                  <Terminal size={15} /> Live Logs
                 </button>
               </div>
             )}
