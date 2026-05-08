@@ -10,7 +10,9 @@ from datetime import datetime
 from ...domain.models import ChatRequest, ChatResponse, Page, Source
 from ...domain.use_cases.wiki_use_cases import ListWikiPagesUseCase, GetWikiPageUseCase, SaveWikiPageUseCase, DeleteWikiPageUseCase, PromoteWikiPageUseCase
 from ...domain.use_cases.chat_use_cases import ChatWithAIUseCase, GetAvailableModelsUseCase
-from ...domain.use_cases.discovery_use_cases import GetDiscoveryUseCase, RunDailyCrawlUseCase, RunCookUseCase
+from ...domain.use_cases.discovery_use_cases import GetDiscoveryUseCase
+from ...domain.use_cases.crawl import RunDailyCrawlUseCase
+from ...domain.use_cases.cook import RunCookUseCase
 from ...domain.use_cases.manual_trigger_use_case import ManualTriggerCrawlUseCase
 from ...domain.use_cases.pipeline_use_cases import WebToWikiPipeline
 
@@ -114,9 +116,11 @@ def create_router(
     # --- Pipeline & Sync ---
     @router.get("/pipeline/status")
     async def get_pipeline_status():
+        from app.domain.pipeline_manager import chef
         return {
             "crawl": run_daily_crawl_use_case.status,
-            "cook": run_cook_use_case.status
+            "cook": run_cook_use_case.status,
+            "pipeline": chef.get_status_summary()
         }
 
     @router.post("/pipeline/run")
@@ -364,7 +368,7 @@ def create_router(
     @router.get("/admin/logs")
     async def get_admin_logs():
         from app.core.logging import mem_handler
-        return {"logs": mem_handler.get_logs() if hasattr(mem_handler, 'get_logs') else []}
+        return {"logs": mem_handler.buffer}
 
     @router.get("/admin/stats")
     async def get_admin_stats():
@@ -433,8 +437,7 @@ def create_router(
 
     @router.post("/vault/inbox/process")
     async def vault_inbox_process(payload: dict):
-        """Start background batch processing. Returns task_id for polling."""
-        import uuid
+        """Start background batch processing."""
         from app.core.container import container
         from app.domain.use_cases.vault_audit_use_cases import VaultInboxUseCase
 
@@ -444,30 +447,18 @@ def create_router(
             rag_service=container.rag_service,
         )
         paths = payload.get("paths")   # None = process all inbox
-        task_id = str(uuid.uuid4())[:8]
-
+        
         import asyncio
-        task = asyncio.create_task(uc.process_batch(task_id, paths))
+        task = asyncio.create_task(uc.process_batch("unused", paths))
         _register_bg_task(task)
 
-        # Store reference so status endpoint can reach it
-        if not hasattr(vault_inbox_process, '_tasks'):
-            vault_inbox_process._tasks = {}
-        vault_inbox_process._tasks[task_id] = uc
-
-        return {"task_id": task_id, "status": "started"}
+        return {"status": "started"}
 
     @router.get("/vault/inbox/status/{task_id}")
     async def vault_inbox_status(task_id: str):
-        """Poll progress of a running or completed batch."""
-        tasks = getattr(vault_inbox_process, '_tasks', {})
-        uc = tasks.get(task_id)
-        if not uc:
-            raise HTTPException(status_code=404, detail="Task not found")
-        progress = uc.get_progress(task_id)
-        if not progress:
-            raise HTTPException(status_code=404, detail="Task not started yet")
-        return progress
+        """Legacy polling endpoint, now returns global summary."""
+        from app.domain.pipeline_manager import chef
+        return chef.get_status_summary()
 
     @router.post("/vault/inbox/apply")
     async def vault_inbox_apply(payload: dict):

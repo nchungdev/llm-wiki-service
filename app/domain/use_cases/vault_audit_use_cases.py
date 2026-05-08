@@ -2,8 +2,10 @@ import os
 import re
 import asyncio
 import logging
+import yaml
 from datetime import date
 from typing import Optional
+from ...domain.pipeline_manager import chef, TaskType, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -356,20 +358,19 @@ folder_category: Tech | AI-ML | Science | Entertainment | True-Crime | Business 
                 sc = max(1, min(10, int(result.get('score', 5))))
                 reason = result.get('score_reason', '')
 
-                # Inject score into frontmatter
+                # Inject score into frontmatter using PyYAML (safe for multi-line values)
                 if _FM_RE.match(content):
-                    new_fm_lines = []
-                    has_score = False
-                    for line in _FM_RE.match(content).group(1).splitlines():
-                        if line.startswith('score:'):
-                            new_fm_lines.append(f'score: {sc}')
-                            has_score = True
-                        else:
-                            new_fm_lines.append(line)
-                    if not has_score:
-                        new_fm_lines.append(f'score: {sc}')
-                        new_fm_lines.append(f'score_reason: "{reason}"')
-                    new_content = '---\n' + '\n'.join(new_fm_lines) + '\n---\n' + _body(content)
+                    fm_match = _FM_RE.match(content)
+                    try:
+                        fm_data = yaml.safe_load(fm_match.group(1)) or {}
+                    except yaml.YAMLError:
+                        fm_data = {}
+                    fm_data['score'] = sc
+                    fm_data['score_reason'] = reason
+                    fm_str = yaml.dump(
+                        fm_data, allow_unicode=True, default_flow_style=False, sort_keys=False,
+                    ).rstrip('\n')
+                    new_content = f'---\n{fm_str}\n---\n{_body(content)}'
                     with open(path, 'w', encoding='utf-8') as f:
                         f.write(new_content)
                     rescored.append({'path': item['path'], 'score': sc})
@@ -564,7 +565,6 @@ class VaultInboxUseCase:
         self.vault_dir  = vault_dir
         self.ai         = ai_provider
         self.rag        = rag_service
-        self._progress: dict = {}   # task_id → progress dict
 
     # ── helpers ──────────────────────────────────────────────
 
@@ -682,6 +682,7 @@ knowledge_type: evergreen | concept | reference | tutorial | feed | clipping"""
     async def apply_plan(self, plan: dict) -> dict:
         """Write updated frontmatter and move note to correct taxonomy folder."""
         rel_path = plan['path']
+        await chef.update_task(rel_path, status=TaskStatus.WRITING, progress=80, message="Đang áp dụng thay đổi...")
         abs_path = os.path.join(self.vault_dir, rel_path)
         content  = _read(abs_path)
         if not content:
@@ -701,24 +702,28 @@ knowledge_type: evergreen | concept | reference | tutorial | feed | clipping"""
             'processed_at':   str(date.today()),
         }
 
-        if _FM_RE.match(content):
-            fm_lines = _FM_RE.match(content).group(1).splitlines()
-            skip = set(new_fm_items.keys())
-            kept = [l for l in fm_lines if not any(l.startswith(k + ':') for k in skip)]
-            for k, v in new_fm_items.items():
-                if isinstance(v, list):
-                    kept.append(f'{k}: [{", ".join(str(t) for t in v)}]')
-                else:
-                    kept.append(f'{k}: {v}')
-            new_content = '---\n' + '\n'.join(kept) + '\n---\n' + _body(content)
-        else:
-            fm_lines = []
-            for k, v in new_fm_items.items():
-                if isinstance(v, list):
-                    fm_lines.append(f'{k}: [{", ".join(str(t) for t in v)}]')
-                else:
-                    fm_lines.append(f'{k}: {v}')
-            new_content = '---\n' + '\n'.join(fm_lines) + '\n---\n' + content
+        # Parse existing frontmatter with PyYAML (handles multi-line values correctly)
+        fm_match = _FM_RE.match(content)
+        body = _body(content) if fm_match else content
+        existing_fm: dict = {}
+        if fm_match:
+            try:
+                existing_fm = yaml.safe_load(fm_match.group(1)) or {}
+            except yaml.YAMLError as e:
+                logger.warning(f"YAML parse error for {rel_path}, starting fresh: {e}")
+                existing_fm = {}
+
+        # Merge — new_fm_items overwrite existing keys
+        existing_fm.update(new_fm_items)
+
+        # Serialize back to clean YAML (no flow-style, unicode preserved)
+        fm_str = yaml.dump(
+            existing_fm,
+            allow_unicode=True,
+            default_flow_style=False,
+            sort_keys=False,
+        ).rstrip('\n')
+        new_content = f'---\n{fm_str}\n---\n{body}'
 
         # ── Determine destination path ────────────────────────
         safe_title  = re.sub(r'[<>:"/\\|?*]', '', plan['title']).strip()[:120] or 'Untitled'
@@ -745,6 +750,7 @@ knowledge_type: evergreen | concept | reference | tutorial | feed | clipping"""
         # RAG index
         if self.rag:
             try:
+                await chef.update_task(rel_path, status=TaskStatus.INDEXING, progress=90, message="Đang cập nhật RAG...")
                 await self.rag.add_document(new_rel, new_content, {'filename': new_rel})
                 if rel_path != new_rel:
                     try: self.rag.collection.delete(ids=[rel_path])
@@ -752,6 +758,7 @@ knowledge_type: evergreen | concept | reference | tutorial | feed | clipping"""
             except Exception as e:
                 logger.warning(f"RAG index failed for {new_rel}: {e}")
 
+        await chef.update_task(rel_path, status=TaskStatus.DONE, progress=100)
         return {**plan, 'new_path': new_rel, 'applied': True, 'error': None}
 
     # ── 4. Process whole inbox (background) ───────────────────
@@ -760,37 +767,27 @@ knowledge_type: evergreen | concept | reference | tutorial | feed | clipping"""
         """
         AI-analyse each unprocessed note.
         Auto-apply if score ≥ AUTO_THRESHOLD, else keep as 'pending' for user review.
-        Updates self._progress[task_id] in-place.
         """
         inbox = await self.get_inbox()
         if paths:
             inbox = [n for n in inbox if n['path'] in paths]
 
-        total = len(inbox)
-        self._progress[task_id] = {
-            'status':  'running',
-            'total':   total,
-            'done':    0,
-            'auto':    [],   # applied automatically
-            'pending': [],   # awaiting user review
-            'errors':  [],
-        }
-
         for item in inbox:
-            p = self._progress[task_id]
-            plan = await self.analyse_note(item['path'])
+            rel_path = item['path']
+            await chef.register_task(rel_path, TaskType.VAULT_NOTE, item['title'])
+            
+            await chef.update_task(rel_path, status=TaskStatus.ANALYZING, progress=30, message="Đang phân tích...")
+            plan = await self.analyse_note(rel_path)
 
             if plan.get('error'):
-                p['errors'].append({'path': item['path'], 'error': plan['error']})
+                await chef.update_task(rel_path, status=TaskStatus.ERROR, message=plan['error'])
             elif plan['action'] == 'auto':
+                await chef.update_task(rel_path, status=TaskStatus.WRITING, progress=70, message="Đang tự động cập nhật...")
                 applied = await self.apply_plan(plan)
-                p['auto'].append(applied)
+                if applied.get('error'):
+                    await chef.update_task(rel_path, status=TaskStatus.ERROR, message=applied['error'])
+                else:
+                    await chef.update_task(rel_path, status=TaskStatus.DONE, progress=100)
             else:
-                p['pending'].append(plan)
-
-            p['done'] += 1
-
-        self._progress[task_id]['status'] = 'done'
-
-    def get_progress(self, task_id: str) -> dict | None:
-        return self._progress.get(task_id)
+                # Waiting for user review
+                await chef.update_task(rel_path, status=TaskStatus.TRIAGING, progress=50, message="Chờ phê duyệt")

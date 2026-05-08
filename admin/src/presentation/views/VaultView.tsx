@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import {
   RefreshCw, AlertTriangle, Trash2, FolderInput, RefreshCcw,
   Star, Clock, Unlink, Link2Off, BarChart2, CheckCircle2,
@@ -7,6 +7,7 @@ import {
   Inbox, Sparkles, CheckCheck, SkipForward, MoveRight,
 } from 'lucide-react';
 import { AdminApi } from '../../infrastructure/api/AdminApi';
+import { usePipelineStore } from '../../application/store/usePipelineStore';
 import '../styles/VaultView.css';
 
 // ── Types ──────────────────────────────────────────────────
@@ -144,6 +145,7 @@ const ActionBtn: React.FC<{
 
 // ── Main View ──────────────────────────────────────────────
 export const VaultView: React.FC = () => {
+  const { status } = usePipelineStore();
   // Tab
   const [tab, setTab] = useState<TabId>('library');
 
@@ -181,7 +183,6 @@ export const VaultView: React.FC = () => {
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
   // Per-item state: path → { state, plan }
   const [itemStates, setItemStates] = useState<Record<string, { state: ItemState; plan?: InboxPlan }>>({});
-  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Computed ────────────────────────────────────────────
   const categories = useMemo(() => [...new Set(notes.map(n => n.category))].sort(), [notes]);
@@ -257,7 +258,6 @@ export const VaultView: React.FC = () => {
     runAudit();
     loadRagStatus();
     loadInbox();
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, [loadInbox]);
 
   const setItemState = (path: string, state: ItemState, plan?: InboxPlan) =>
@@ -274,34 +274,8 @@ export const VaultView: React.FC = () => {
       return next;
     });
     try {
-      const res = await AdminApi.processInbox(paths);
-      const taskId = res.data.task_id;
-      // Track which paths we've already surfaced to avoid double-updates
-      const seen = new Set<string>();
-
-      pollRef.current = setInterval(async () => {
-        try {
-          const p = await AdminApi.getInboxStatus(taskId);
-          setBatchProgress(p.data);
-
-          // Surface newly completed items inline
-          [...(p.data.auto || []), ...(p.data.pending || [])].forEach((plan: InboxPlan) => {
-            if (!seen.has(plan.path)) {
-              seen.add(plan.path);
-              setItemState(plan.path, plan.action === 'auto' ? 'auto' : 'pending', plan);
-            }
-          });
-
-          if (p.data.status === 'done') {
-            clearInterval(pollRef.current!);
-            setBatchRunning(false);
-            loadLibrary();
-          }
-        } catch {
-          clearInterval(pollRef.current!);
-          setBatchRunning(false);
-        }
-      }, 2000);
+      await AdminApi.processInbox(paths);
+      // No need to poll here, global pipeline status will track individual task states
     } catch {
       setBatchRunning(false);
       targetPaths.forEach(p => setItemState(p, 'idle'));
@@ -887,8 +861,10 @@ export const VaultView: React.FC = () => {
             <div className="inbox-list">
               {inboxItems.map(item => {
                 const is = itemStates[item.path];
-                const state = is?.state ?? 'idle';
+                const pipelineTask = status.pipeline?.tasks[item.path];
+                const state = pipelineTask ? pipelineTask.status : (is?.state ?? 'idle');
                 const plan  = is?.plan;
+
                 return (
                   <div key={item.path} className={`inbox-item inbox-item--${state}`}>
 
@@ -913,14 +889,21 @@ export const VaultView: React.FC = () => {
                       </>
                     )}
 
-                    {/* ── processing: spinner ── */}
-                    {state === 'processing' && (
-                      <div className="inbox-item-head">
-                        <span className="inbox-item-title">{item.title}</span>
-                        <span className="inbox-processing-label">
-                          <Loader2 size={12} className="spin" /> AI đang phân tích…
-                        </span>
-                      </div>
+                    {/* ── processing / analyzing / writing: spinner ── */}
+                    {(state === 'processing' || state === 'analyzing' || state === 'writing' || state === 'indexing') && (
+                      <>
+                        <div className="inbox-item-head">
+                          <span className="inbox-item-title">{item.title}</span>
+                          <span className="inbox-processing-label">
+                            <Loader2 size={12} className="spin" /> {pipelineTask?.message || 'Đang xử lý…'}
+                          </span>
+                        </div>
+                        {pipelineTask?.progress !== undefined && (
+                          <div className="inbox-prog-bar-mini" style={{ marginTop: 8, height: 4 }}>
+                            <div className="inbox-prog-bar-fill" style={{ width: `${pipelineTask.progress}%`, background: '#a855f7' }} />
+                          </div>
+                        )}
+                      </>
                     )}
 
                     {/* ── auto: applied, show result ── */}

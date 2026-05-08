@@ -1,7 +1,8 @@
 import logging
 import asyncio
 import time
-from .discovery_use_cases import RunDailyCrawlUseCase, RunHourlyResearchUseCase
+from .crawl import RunDailyCrawlUseCase
+from .discovery_use_cases import RunHourlyResearchUseCase
 
 logger = logging.getLogger(__name__)
 

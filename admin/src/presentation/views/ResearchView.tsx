@@ -217,8 +217,8 @@ export const ResearchView: React.FC = () => {
         components={{
           // We can't easily intercept text nodes for [n] without a plugin
           // So we pre-process the text below
-          p: ({ children }) => <p className="rv-md-p">{children}</p>,
-          a: ({ href, children }) => {
+          p: ({ children }: any) => <p className="rv-md-p">{children}</p>,
+          a: ({ href, children }: any) => {
             if (href?.startsWith('#cite-')) {
               const id = href.replace('#cite-', '');
               return (

@@ -31,7 +31,7 @@ ROOT_DIR=$(pwd)
 
 if [ "$1" == "--build-only" ]; then
     echo "🏗️  Building Admin UI Only..."
-    cd "$ROOT_DIR/admin" && npm run build
+    cd "$ROOT_DIR/admin" && npm install && npm run build
     cd "$ROOT_DIR"
     echo "✅ Build complete. Static files updated."
     exit 0
@@ -39,17 +39,19 @@ fi
 
 if [ "$1" == "--dev" ]; then
     release_port
-    echo "🛠️ Starting in DEV mode with Auto-Reload..."
+    echo "🛠️ Starting in DEV mode with Auto-Reload (nodemon)..."
     VITE_PID=$(lsof -ti :5173)
     [ ! -z "$VITE_PID" ] && kill -9 $VITE_PID 2>/dev/null
     
-    cd "$ROOT_DIR/admin" && npm run dev &
+    cd "$ROOT_DIR/admin" && npm install && npm run dev &
     cd "$ROOT_DIR"
-    python3 -m uvicorn main:app --host 0.0.0.0 --port $PORT --reload --reload-include "config.json"
+    # Nodemon watches python files and reloads the whole app
+    nodemon --watch app --watch main.py --ext py,json --exec "python3 main.py"
 else
-    # Default: Always rebuild and start
+    # Default: Rebuild and start with nodemon for persistence
     echo "🏗️  Building Admin UI..."
     cd "$ROOT_DIR/admin"
+    npm install
     if ! npm run build; then
         echo "❌ Build failed. Please check TypeScript errors above."
         exit 1
@@ -57,6 +59,7 @@ else
     cd "$ROOT_DIR"
     
     release_port
-    echo "🌐 Server starting on http://localhost:$PORT"
-    python3 main.py
+    echo "🌐 Server starting on http://localhost:$PORT (Persistent mode with nodemon)"
+    # Even in production, nodemon helps with accidental crashes and config changes
+    nodemon --watch config.json --exec "python3 main.py"
 fi

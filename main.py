@@ -208,10 +208,6 @@ async def get_stats():
 async def get_tunnel_status():
     return tunnel_manager.status
 
-@api_router.get("/admin/logs")
-async def get_logs():
-    return {"logs": mem_handler.buffer}
-
 @api_router.post("/config/gcp-key")
 async def import_gcp_key(payload: dict):
     json_content = payload.get("json_content")
@@ -271,11 +267,10 @@ async def index():
 
 if __name__ == "__main__":
     import uvicorn
-    # Enable reload and watch config.json when running directly
+    # Nodemon handles reload now, so we run uvicorn simply
     uvicorn.run(
         "main:app", 
         host="0.0.0.0", 
         port=cfg.server.port, 
-        reload=True, 
-        reload_includes=["config.json"]
+        reload=False
     )

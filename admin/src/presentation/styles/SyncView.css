@@ -398,6 +398,41 @@
 
 /* ── Kanban Cards ─────────────────────────────────────────── */
 
+.cook-item-card {
+  transition: all 0.3s ease;
+}
+
+.cook-item-analyzing, .cook-item-triaging {
+  border-left: 3px solid #3b82f6 !important;
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.cook-item-writing {
+  border-left: 3px solid #8b5cf6 !important;
+  background: rgba(139, 92, 246, 0.05);
+}
+
+.cook-item-indexing {
+  border-left: 3px solid #10b981 !important;
+  background: rgba(16, 185, 129, 0.05);
+}
+
+.cook-item-error {
+  border-left: 3px solid #ef4444 !important;
+}
+
+.linear-progress-container {
+  height: 4px;
+  background: rgba(0, 0, 0, 0.05);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.linear-progress-fill {
+  height: 100%;
+  transition: width 0.4s ease;
+}
+
 .kanban-card {
     background: var(--card-bg);
     border: 1px solid var(--border);

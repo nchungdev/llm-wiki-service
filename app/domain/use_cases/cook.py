@@ -8,6 +8,7 @@ from ...infrastructure.ai_provider import AIProvider
 from ...infrastructure.rag_provider import RAGService
 from ...domain.repositories import IWikiRepository
 from ...core.obsidian import ObsidianEngine
+from ...domain.pipeline_manager import chef, TaskType, TaskStatus
 
 logger = logging.getLogger(__name__)
 
@@ -60,19 +61,32 @@ class RunCookUseCase:
 
         cooked_list = []
         for f in filenames:
+            # Load metadata for title
+            item_title = f
+            try:
+                with open(os.path.join(self.raw_dir, f), 'r', encoding='utf-8') as jf:
+                    data = json.load(jf)
+                    item_title = data.get('title', f)
+            except: pass
+
+            await chef.register_task(f, TaskType.RAW_FILE, item_title)
+            
             self.status["current"] = f
             self.status["queue"] = [x for x in self.status["queue"] if x != f]
-            success = await self._process_file(os.path.join(self.raw_dir, f))
+            success = await self._process_file(os.path.join(self.raw_dir, f), f)
             if success:
                 cooked_list.append(f)
                 self.status["processed"] += 1
+                await chef.update_task(f, status=TaskStatus.DONE, progress=100)
+            else:
+                await chef.update_task(f, status=TaskStatus.ERROR, message="Lỗi xử lý")
 
         self.status["running"] = False
         self.status["current"] = None
         self.status["queue"] = []
         return {"status": "success", "processed": self.status["processed"], "files": cooked_list}
 
-    async def _process_file(self, file_path: str) -> bool:
+    async def _process_file(self, file_path: str, task_id: str) -> bool:
         if not os.path.exists(file_path): return False
         try:
             with open(file_path, 'r', encoding='utf-8') as f:
@@ -87,10 +101,12 @@ class RunCookUseCase:
             junk_keywords = ['vụ án', 'hình sự', 'tai nạn', 'tử vong', 'scandal', 'showbiz']
             if any(kw in title.lower() for kw in junk_keywords):
                 logger.info(f"  🗑️ Pre-filter: '{title}'")
+                await chef.update_task(task_id, status=TaskStatus.SKIPPED, message="Lọc rác")
                 os.remove(file_path)
                 return True
 
             # ── BƯỚC 1: CLASSIFICATION (score + series + folder) ─
+            await chef.update_task(task_id, status=TaskStatus.ANALYZING, progress=20, message="Đang phân tích...")
             classification = await self._classify(title, source_name, raw_content)
             score = classification.get('knowledge_score', 5)
             folder_category = classification.get('folder_category', 'Tech')
@@ -103,6 +119,7 @@ class RunCookUseCase:
             # Delete immediately if score 1-3
             if score <= 3:
                 logger.info(f"  ⏭️ Score {score} (too low): '{title}'")
+                await chef.update_task(task_id, status=TaskStatus.SKIPPED, message=f"Điểm thấp ({score})")
                 os.remove(file_path)
                 return True
 
@@ -117,6 +134,7 @@ class RunCookUseCase:
                 knowledge_type = 'knowledge'
 
             # ── BƯỚC 2: TRIAGE ─────────────────────────────────
+            await chef.update_task(task_id, status=TaskStatus.TRIAGING, progress=40, message="AI đang lọc...")
             triage_prompt = f"""Phân loại nội dung tri thức:
 - skip: BỎ QUA rác, tin xã hội thuần túy, gossip.
 - keep: GIỮ LẠI kiến thức có ích, hướng dẫn, bài học.
@@ -124,10 +142,12 @@ Tiêu đề: {title}
 Trả về JSON: {{"action": "skip"|"keep"}}"""
             triage = await self.ai_provider.generate_structured_json(triage_prompt)
             if triage.get('action') == 'skip':
+                await chef.update_task(task_id, status=TaskStatus.SKIPPED, message="AI bỏ qua")
                 os.remove(file_path)
                 return True
 
             # ── BƯỚC 3: TRANSFORM ──────────────────────────────
+            await chef.update_task(task_id, status=TaskStatus.WRITING, progress=60, message="AI đang viết Wiki...")
             prompt = f"""Tái cấu trúc bài viết sau thành Wiki Obsidian chuẩn (ưu tiên trình bày bằng tiếng Việt).
 Category: {folder_category}
 Title: {title}
@@ -173,6 +193,7 @@ Trả về JSON:
             )
 
             # ── BƯỚC 5: DATA SINK ───────────────────────────────
+            await chef.update_task(task_id, status=TaskStatus.INDEXING, progress=80, message="Đang lưu & Index...")
             prefix = "Knowledge" if knowledge_type == "knowledge" else "Feed"
             subfolder = f"{prefix}/{folder_category}"
             safe_title = re.sub(r'[<>:"/\\|?*]', '', title)[:100]
@@ -198,6 +219,7 @@ Trả về JSON:
 
         except Exception as e:
             logger.error(f"Cook error: {e}")
+            await chef.update_task(task_id, status=TaskStatus.ERROR, message=str(e))
             return False
 
     async def _classify(self, title: str, source_name: str, content: str) -> dict:

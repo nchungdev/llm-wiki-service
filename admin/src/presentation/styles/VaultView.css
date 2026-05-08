@@ -1006,7 +1006,13 @@
     gap: 5px;
     font-size: 0.75rem;
     color: var(--primary);
+    font-weight: 600;
 }
+
+.inbox-item--analyzing, .inbox-item--triaging { border-left: 2px solid #3b82f6 !important; }
+.inbox-item--writing { border-left: 2px solid #8b5cf6 !important; }
+.inbox-item--indexing { border-left: 2px solid #10b981 !important; }
+.inbox-item--error { border-left: 2px solid #ef4444 !important; }
 
 .inbox-item-path {
     font-size: 0.7rem;

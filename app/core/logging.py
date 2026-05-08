@@ -28,23 +28,28 @@ class ColoredFormatter(logging.Formatter):
 
 class MemoryHandler(logging.Handler):
     """Buffers last N logs for Admin UI polling"""
+    _shared_buffer: List[Dict] = []
+    
     def __init__(self, capacity=100):
         super().__init__()
         self.capacity = capacity
-        self.buffer: List[Dict] = []
+
+    @property
+    def buffer(self):
+        return self._shared_buffer
 
     def emit(self, record):
-        self.buffer.append({
+        self._shared_buffer.append({
             "time": datetime.fromtimestamp(record.created).strftime('%H:%M:%S'),
             "message": record.getMessage(),
             "level": record.levelname,
             "name": record.name
         })
-        if len(self.buffer) > self.capacity:
-            self.buffer.pop(0)
+        if len(self._shared_buffer) > self.capacity:
+            self._shared_buffer.pop(0)
 
     def clear(self):
-        self.buffer = []
+        self._shared_buffer.clear()
 
 class EndpointFilter(logging.Filter):
     """Filter out noisy health/polling checks from access logs"""
@@ -58,22 +63,35 @@ class EndpointFilter(logging.Filter):
         return not any(path in msg for path in self.paths)
 
 # Global instances
-mem_handler = MemoryHandler()
+mem_handler = MemoryHandler(capacity=200)
 
 def setup_logging(level=logging.INFO):
+    # 1. Console handler with colors
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setFormatter(ColoredFormatter())
     
-    # Suppression filter for noisy polling endpoints
-    suppress_filter = EndpointFilter(["/api/pipeline/status", "/api/raw/list", "/api/pipeline/history"])
-
-    logging.basicConfig(
-        level=level,
-        handlers=[console_handler, mem_handler],
-        force=True # Ensure our config overrides everything
-    )
+    # 2. Setup root logger
+    root_logger = logging.getLogger()
+    root_logger.setLevel(level)
     
-    # Apply filter to uvicorn access logs
+    # Clean existing handlers to avoid duplicates
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+        
+    root_logger.addHandler(console_handler)
+    root_logger.addHandler(mem_handler)
+    
+    # 3. Explicitly attach to uvicorn and other libraries
+    for name in ["uvicorn", "uvicorn.error", "uvicorn.access", "fastapi", "httpx"]:
+        l = logging.getLogger(name)
+        l.addHandler(mem_handler)
+        l.propagate = True
+    
+    # 4. Suppress noisy polling logs
+    suppress_filter = EndpointFilter(["/api/pipeline/status", "/api/admin/stats", "/api/admin/logs"])
     logging.getLogger("uvicorn.access").addFilter(suppress_filter)
     
-    return logging.getLogger("app")
+    # 4. Return app logger
+    app_logger = logging.getLogger("app")
+    app_logger.info("📡 Logging system initialized with Memory Buffer (capacity=200)")
+    return app_logger

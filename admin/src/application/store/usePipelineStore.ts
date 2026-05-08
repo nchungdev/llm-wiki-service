@@ -21,7 +21,8 @@ interface PipelineStore {
 export const usePipelineStore = create<PipelineStore>((set, get) => ({
   status: { 
     crawl: { running: false, total: 0, processed: 0, items_found: 0, tasks: {} },
-    cook: { running: false, total: 0, processed: 0, status: 'Idle' }
+    cook: { running: false, total: 0, processed: 0, status: 'Idle' },
+    pipeline: { running: false, total: 0, processed: 0, active_count: 0, tasks: {} }
   },
   history: [],
   isPolling: false,

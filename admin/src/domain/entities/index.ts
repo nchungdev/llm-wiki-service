@@ -48,6 +48,21 @@ export interface PipelineStatus {
     current?: string;
     queue?: string[];
   };
+  pipeline?: {
+    running: boolean;
+    total: number;
+    processed: number;
+    active_count: number;
+    tasks: Record<string, {
+      id: string;
+      type: 'raw_file' | 'vault_note';
+      title: string;
+      status: 'queued' | 'analyzing' | 'triaging' | 'writing' | 'indexing' | 'done' | 'error' | 'skipped';
+      progress: number;
+      message: string;
+      error?: string;
+    }>;
+  };
 }
 
 export interface PipelineHistory {
